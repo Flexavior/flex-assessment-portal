@@ -1,4 +1,4 @@
-# Educator Assessment Automation
+# Flexavior Educator Assessment Automation
 
 Lightweight, portable grading service for a Online Learning course. Student reports go into `data/students/`. Assignment questions and the rubric are read live. Course slides (and optionally the textbook) are embedded once for vector search. An LLM scores each submission and writes a PDF to `data/reports/{student_name}_{YYYYMMDD_HHMMSS}.pdf`.
 
