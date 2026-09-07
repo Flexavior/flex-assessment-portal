@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="wide">
+  <div id="app-nav"></div>
+  <main class="portal-shell portal-shell--wide">
+    <div class="stats" id="stats"></div>
+    <div class="split">
+      <section class="panel table-card">
+        <div class="table-card__head">
+          <div class="table-card__title">
+            <h2>Assignments and batches</h2>
+          </div>
+        </div>
+        <form id="assignment-form" class="table-toolbar">
+          <div class="inline-fields action-row__grow">
+            <div class="field-row">
+              <label for="title">Assignment title</label>
+              <input id="title" type="text" placeholder="Computer Networking" required>
+            </div>
+            <div class="field-row">
+              <label for="batch_name">Batch name</label>
+              <input id="batch_name" type="text" placeholder="Batch 11" required>
+            </div>
+            <div class="field-row">
+              <label for="local_deadline">Deadline (+06:30)</label>
+              <input id="local_deadline" type="datetime-local">
+            </div>
+          </div>
+          <button type="submit" class="btn-new">+ Create assignment</button>
+        </form>
+        <p id="assign-msg" class="error hidden"></p>
+        <div class="table-wrap">
+        <table class="table-dense">
+          <thead><tr><th>Assignment</th><th>Deadline</th><th>Status</th></tr></thead>
+          <tbody id="assignments"></tbody>
+        </table>
+        </div>
+      </section>
+      <section class="panel">
+        <h2>Recent reports</h2>
+        <div class="table-wrap">
+        <table class="table-dense">
+          <thead><tr><th>Student</th><th>Assignment</th><th>File</th><th>Score</th></tr></thead>
+          <tbody id="recent"></tbody>
+        </table>
+        </div>
+      </section>
+    </div>
+  </main>
+  <script src="/static/nav.js"></script>
+  <script>
+    requireAuth(["supervisor", "educator"]).then(async () => {
+      async function loadDashboard() {
+        const q = encodeURIComponent(getNavSearch());
+        const data = await api("/api/dashboard?search=" + q);
+        const j = data.jobs || {};
+        document.getElementById("stats").innerHTML = [
+          ["Submissions", data.submissions],
+          ["Reports", data.reports],
+          ["Queued / running", j.active || 0],
+          ["Jobs failed", j.failed || 0],
+        ].map(([k, v]) => `<div class="stat"><span>${k}</span><strong>${v}</strong></div>`).join("");
+        document.getElementById("assignments").innerHTML = (data.assignments || []).map((a) =>
+          `<tr data-search-item data-search="${a.label} ${a.deadline_local || ""} ${a.is_active ? "active" : "inactive"}">
+            <td><strong>${a.label}</strong></td>
+            <td>${a.deadline_local || "Open"}</td>
+            <td><span class="chip">${a.is_active ? "Active" : "Inactive"}</span></td>
+          </tr>`
+        ).join("") || `<tr><td colspan="3">No assignment batches yet.</td></tr>`;
+        document.getElementById("recent").innerHTML = (data.recent || []).map((r) =>
+          `<tr data-search-item data-search="${r.student_name || ""} ${r.assignment_title || ""} ${r.batch_name || ""} ${r.pdf_filename}">
+            <td>${r.student_name || ""}</td>
+            <td>${[r.assignment_title, r.batch_name].filter(Boolean).join(" / ") || "Unassigned"}</td>
+            <td><a href="/reports/${encodeURIComponent(r.pdf_filename)}" target="_blank">${r.pdf_filename}</a></td>
+            <td>${r.total_score_percent ?? ""}</td>
+          </tr>`
+        ).join("") || `<tr><td colspan="4">No reports yet.</td></tr>`;
+      }
+
+      document.getElementById("assignment-form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const msg = document.getElementById("assign-msg");
+        try {
+          const out = await api("/api/assignments", {
+            method: "POST",
+            body: JSON.stringify({
+              title: document.getElementById("title").value,
+              batch_name: document.getElementById("batch_name").value,
+              local_deadline: document.getElementById("local_deadline").value || null,
+            }),
+          });
+          msg.textContent = "Created " + out.assignment.label;
+          msg.classList.remove("hidden");
+          e.target.reset();
+          await loadDashboard();
+        } catch (err) {
+          msg.textContent = err.message;
+          msg.classList.remove("hidden");
+        }
+      });
+
+      onNavSearch(() => loadDashboard());
+      await loadDashboard();
+    });
+  </script>
+</body>
+</html>

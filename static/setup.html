@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Setup — Educator Assessment</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="auth">
+  <main class="card auth-card">
+    <div class="brand-mark">
+      <img src="/static/assets/branding/flexavior-logo.png" alt="Flexavior" onerror="this.style.display='none'">
+    </div>
+    <h1>First-run setup</h1>
+    <p class="lede">Create the supervisor account. This page is available only while the user table is empty.</p>
+    <form id="setup-form">
+      <div class="field-row">
+        <label for="full_name">Full name</label>
+        <input id="full_name" type="text" required>
+      </div>
+      <div class="field-row">
+        <label for="email">Email</label>
+        <input id="email" type="email" required>
+      </div>
+      <div class="field-row">
+        <label for="password">Password (min 8 characters)</label>
+        <div class="password-wrap">
+          <input id="password" type="password" minlength="8" required>
+          <button type="button" class="password-toggle" id="toggle-password" aria-label="Show password" title="Show password">
+            <svg class="icon-eye" id="icon-eye-open" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M12 5c5.5 0 9.5 4.4 10.8 6.1.3.4.3 1.4 0 1.8C21.5 14.6 17.5 19 12 19s-9.5-4.4-10.8-6.1c-.3-.4-.3-1.4 0-1.8C2.5 9.4 6.5 5 12 5zm0 2C7.8 7 4.4 10.2 3.1 12c1.3 1.8 4.7 5 8.9 5s7.6-3.2 8.9-5c-1.3-1.8-4.7-5-8.9-5zm0 2.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5z"/>
+            </svg>
+            <svg class="icon-eye hidden" id="icon-eye-off" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M3.3 2.3 2 3.6l3.1 3.1A13.9 13.9 0 0 0 1.2 11c-.3.4-.3 1.4 0 1.8C2.5 14.6 6.5 19 12 19c2 0 3.8-.6 5.4-1.5l3.3 3.3 1.3-1.3L3.3 2.3zM12 17c-4.2 0-7.6-3.2-8.9-5 .7-.9 2-2.2 3.8-3.2l1.6 1.6a3.5 3.5 0 0 0 4.9 4.9l2.5 2.5A8.9 8.9 0 0 1 12 17zm0-10c5.5 0 9.5 4.4 10.8 6.1.3.4.3 1.4 0 1.8a15.3 15.3 0 0 1-2.9 3l-1.4-1.4a12.8 12.8 0 0 0 2.4-2.5c-1.3-1.8-4.7-5-8.9-5-.8 0-1.6.1-2.3.4L8.1 7.8A9.4 9.4 0 0 1 12 7z"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <button type="submit">Create supervisor</button>
+      <p id="err" class="error hidden"></p>
+    </form>
+  </main>
+  <script src="/static/nav.js"></script>
+  <script>
+    const passwordInput = document.getElementById("password");
+    const togglePassword = document.getElementById("toggle-password");
+    const eyeOpen = document.getElementById("icon-eye-open");
+    const eyeOff = document.getElementById("icon-eye-off");
+    togglePassword.addEventListener("click", () => {
+      const hidden = passwordInput.type === "password";
+      passwordInput.type = hidden ? "text" : "password";
+      eyeOpen.classList.toggle("hidden", hidden);
+      eyeOff.classList.toggle("hidden", !hidden);
+      togglePassword.setAttribute("aria-label", hidden ? "Hide password" : "Show password");
+      togglePassword.setAttribute("title", hidden ? "Hide password" : "Show password");
+    });
+
+    document.getElementById("setup-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const err = document.getElementById("err");
+      err.classList.add("hidden");
+      try {
+        await api("/api/setup", {
+          method: "POST",
+          body: JSON.stringify({
+            full_name: document.getElementById("full_name").value,
+            email: document.getElementById("email").value,
+            password: document.getElementById("password").value,
+          }),
+        });
+        location.href = "/dashboard";
+      } catch (ex) {
+        err.textContent = ex.message;
+        err.classList.remove("hidden");
+      }
+    });
+  </script>
+</body>
+</html>

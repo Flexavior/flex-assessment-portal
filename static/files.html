@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Files</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="wide files-view">
+  <div id="app-nav"></div>
+  <main class="files-shell">
+    <div class="files-split">
+      <section class="files-panel">
+        <div class="files-panel__bar">
+          <h2>Student Report</h2>
+          <div class="files-toolbar">
+            <select id="batch-filter-s" class="files-batch-select" aria-label="Student files batch">
+              <option value="all">All batches</option>
+            </select>
+            <input id="search-s" class="files-search" type="search" placeholder="Student, file, batch…" aria-label="Search student files">
+            <button type="button" class="files-zip-btn" id="zip-s">Download zip</button>
+          </div>
+        </div>
+        <div class="files-panel__body table-wrap">
+          <table class="table-dense files-table">
+            <thead>
+              <tr>
+                <th class="col-check">
+                  <input type="checkbox" id="sel-all-s" aria-label="Select all student files">
+                </th>
+                <th>Student</th>
+                <th>File</th>
+                <th>Batch</th>
+                <th>Size</th>
+                <th class="col-actions">Action</th>
+              </tr>
+            </thead>
+            <tbody id="student-rows"></tbody>
+          </table>
+        </div>
+        <div class="files-pager" id="pager-s"></div>
+      </section>
+
+      <section class="files-panel">
+        <div class="files-panel__bar">
+          <h2>Assessment Report</h2>
+          <div class="files-toolbar">
+            <select id="batch-filter-r" class="files-batch-select" aria-label="Report files batch">
+              <option value="all">All batches</option>
+            </select>
+            <input id="search-r" class="files-search" type="search" placeholder="Student, file, batch…" aria-label="Search reports">
+            <button type="button" class="files-zip-btn" id="zip-r">Download zip</button>
+          </div>
+        </div>
+        <div class="files-panel__body table-wrap">
+          <table class="table-dense files-table">
+            <thead>
+              <tr>
+                <th class="col-check">
+                  <input type="checkbox" id="sel-all-r" aria-label="Select all reports">
+                </th>
+                <th>Report</th>
+                <th>Batch</th>
+                <th>Size</th>
+                <th class="col-actions">Action</th>
+              </tr>
+            </thead>
+            <tbody id="reports"></tbody>
+          </table>
+        </div>
+        <div class="files-pager" id="pager-r"></div>
+      </section>
+    </div>
+    <p id="err" class="error hidden"></p>
+  </main>
+
+  <div id="assess-modal" class="modal hidden" aria-hidden="true">
+    <div class="modal__dialog">
+      <div class="modal__head">
+        <h2 id="assess-title">Assess submission</h2>
+        <button type="button" class="modal__close" data-close-modal aria-label="Close">&times;</button>
+      </div>
+      <div class="modal__body">
+        <p id="assess-file" class="file-name"></p>
+        <p class="lede">Primary assessment — one report per submission. Pick the grading model before queuing.</p>
+        <div class="field-row">
+          <label for="assess-provider">Provider</label>
+          <select id="assess-provider"></select>
+        </div>
+        <div class="field-row">
+          <label for="assess-model">Model</label>
+          <select id="assess-model"></select>
+        </div>
+        <p id="assess-err" class="error hidden"></p>
+      </div>
+      <div class="modal__foot">
+        <button type="button" class="btn-secondary" data-close-modal>Cancel</button>
+        <button type="button" id="assess-start" class="btn-primary">Start assessment</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="delete-modal" class="modal hidden" aria-hidden="true">
+    <div class="modal__dialog">
+      <div class="modal__head">
+        <h2 id="delete-title">Remove file</h2>
+        <button type="button" class="modal__close" data-close-modal aria-label="Close">&times;</button>
+      </div>
+      <div class="modal__body">
+        <p id="delete-file" class="file-name"></p>
+      <p class="lede">This archives the file to data/archive/ (not hard-deleted). A reason is required for the system log.</p>
+        <div class="field-row">
+          <label for="delete-reason">Reason</label>
+          <textarea id="delete-reason" rows="3" placeholder="Duplicate upload, wrong batch, test file…" required></textarea>
+        </div>
+        <p id="delete-err" class="error hidden"></p>
+      </div>
+      <div class="modal__foot">
+        <button type="button" class="btn-secondary" data-close-modal>Cancel</button>
+        <button type="button" id="delete-save" class="btn-primary">Archive and remove</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="map-modal" class="modal hidden" aria-hidden="true">
+    <div class="modal__dialog">
+      <div class="modal__head">
+        <h2 id="map-title">Map to student account</h2>
+        <button type="button" class="modal__close" data-close-modal aria-label="Close">&times;</button>
+      </div>
+      <div class="modal__body">
+        <p id="map-file" class="file-name"></p>
+        <div class="field-row">
+          <label for="map-student">Student account</label>
+          <select id="map-student"></select>
+        </div>
+        <p id="map-err" class="error hidden"></p>
+      </div>
+      <div class="modal__foot">
+        <button type="button" class="btn-secondary" data-close-modal>Cancel</button>
+        <button type="button" id="map-save" class="btn-primary">Save mapping</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/nav.js"></script>
+  <script>
+    let studentCatalog = [];
+    let mapTarget = null;
+    let deleteTarget = null;
+    let isSupervisor = false;
+    let providerCatalog = [];
+    let assessTarget = { filename: "", button: null };
+
+    function populateAssessModels() {
+      const selected = providerCatalog.find((p) => p.id === document.getElementById("assess-provider").value);
+      const modelSelect = document.getElementById("assess-model");
+      modelSelect.innerHTML = "";
+      if (!selected) return;
+      (selected.models || []).forEach((modelName, index) => {
+        const option = document.createElement("option");
+        option.value = modelName;
+        option.textContent = modelName;
+        if (index === 0 || modelName === selected.model) option.selected = true;
+        modelSelect.appendChild(option);
+      });
+    }
+
+    async function loadProviders() {
+      const data = await api("/api/providers");
+      providerCatalog = data.providers || [];
+      const providerSelect = document.getElementById("assess-provider");
+      providerSelect.innerHTML = "";
+      providerCatalog.forEach((provider) => {
+        const option = document.createElement("option");
+        option.value = provider.id;
+        option.textContent = provider.label + (provider.is_default ? " (default)" : "");
+        if (provider.is_default || provider.id === data.default_provider) option.selected = true;
+        providerSelect.appendChild(option);
+      });
+      populateAssessModels();
+    }
+
+    function openAssessModal(filename, button) {
+      assessTarget = { filename, button };
+      document.getElementById("assess-file").textContent = filename;
+      document.getElementById("assess-err").classList.add("hidden");
+      populateAssessModels();
+      openModal("assess-modal");
+    }
+
+    function supervisorRemove(kind, id, label) {
+      if (!isSupervisor || !id) return "";
+      return `<button type="button" class="btn-ghost btn-compact" data-remove-${kind}="${id}" data-file="${esc(label)}">Remove</button>`;
+    }
+
+    function esc(v) {
+      return String(v || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+    }
+
+    function batchLabel(item) {
+      return [item.assignment_title, item.batch_name].filter(Boolean).join(" / ") || "Unassigned";
+    }
+
+    function isMappedStudent(item) {
+      return !!item.student_user_id;
+    }
+
+    function isMappedReport(row) {
+      return !!(row.student_user_id || row.assignment_id);
+    }
+
+    function submissionAction(item) {
+      let action = "";
+      if (!isMappedStudent(item)) {
+        action = `<button type="button" class="btn-secondary btn-compact" data-map-submission="${item.id}" data-file="${esc(item.stored_filename)}">Map</button>`;
+      } else {
+        const state = item.assess_state || {};
+        if (state.approved) {
+          const title = state.report_pdf ? `Approved: ${state.report_pdf}` : "Approved";
+          action = `<button type="button" class="btn-secondary btn-compact" disabled title="${esc(title)}">Approve</button>`;
+        } else if (state.has_report) {
+          const title = state.report_pdf ? `Pending review: ${state.report_pdf}` : "Awaiting approval";
+          action = `<button type="button" class="btn-secondary btn-compact" disabled title="${esc(title)}">Assessed</button>`;
+        } else if (state.job_active) {
+          action = `<button type="button" class="btn-secondary btn-compact" disabled>Grading…</button>`;
+        } else {
+          action = `<button type="button" class="btn-edit btn-compact" data-assess="${esc(item.stored_filename)}">Assess</button>`;
+        }
+      }
+      return action + supervisorRemove("submission", item.id, item.stored_filename);
+    }
+
+    function submissionRows(items, files) {
+      const byName = Object.fromEntries((files || []).map((f) => [f.name, f]));
+      return (items || []).map((item) => {
+        const file = byName[item.stored_filename] || {};
+        const search = `${item.full_name || ""} ${item.stored_filename} ${batchLabel(item)}`;
+        return `<tr data-search-item data-search="${esc(search)}">
+          <td><input type="checkbox" class="sfile" value="${esc(item.stored_filename)}"></td>
+          <td>${esc(item.full_name || "Unknown")}</td>
+          <td class="cell-truncate" title="${esc(item.stored_filename)}">${esc(item.stored_filename)}</td>
+          <td>${esc(batchLabel(item))}</td>
+          <td>${esc(file.size || "")}</td>
+          <td class="col-actions">${submissionAction(item)}</td>
+        </tr>`;
+      }).join("") || `<tr><td colspan="6">No student files for this batch.</td></tr>`;
+    }
+
+    function reportRows(files, reports) {
+      const byName = Object.fromEntries((reports || []).map((r) => [r.pdf_filename, r]));
+      return (files || []).map((f) => {
+        const row = byName[f.name] || {};
+        const label = batchLabel(row);
+        const mapped = isMappedReport(row);
+        let action = mapped
+          ? ""
+          : `<button type="button" class="btn-secondary btn-compact" data-map-report="${row.id || ""}" data-pdf="${esc(f.name)}">Map</button>`;
+        if (row.id) action += supervisorRemove("report", row.id, f.name);
+        return `<tr data-search-item data-search="${esc(f.name)} ${esc(label)} ${esc(row.student_name || "")}">
+          <td><input type="checkbox" class="rfile" value="${esc(f.name)}"></td>
+          <td class="cell-truncate" title="${esc(f.name)}">${esc(f.name)}</td>
+          <td>${esc(label)}</td>
+          <td>${esc(f.size)}</td>
+          <td class="col-actions">${action}</td>
+        </tr>`;
+      }).join("") || `<tr><td colspan="5">No reports for this batch.</td></tr>`;
+    }
+
+    function flattenSubmissions(groups) {
+      return (groups || []).flatMap((group) => group.items || []);
+    }
+
+    async function zipKind(kind, cls) {
+      const names = [...document.querySelectorAll("." + cls + ":checked")].map((el) => el.value);
+      if (!names.length) throw new Error("Select at least one file.");
+      const res = await fetch("/api/zip", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind, filenames: names }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail || "Zip failed");
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = kind + ".zip";
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function syncHeaderSelectAll(headerId, rowSelector) {
+      const header = document.getElementById(headerId);
+      const boxes = [...document.querySelectorAll(rowSelector)];
+      if (!header) return;
+      header.checked = boxes.length > 0 && boxes.every((cb) => cb.checked);
+      header.indeterminate = boxes.some((cb) => cb.checked) && !header.checked;
+    }
+
+    function resetHeaderSelectAll(headerId) {
+      const header = document.getElementById(headerId);
+      if (!header) return;
+      header.checked = false;
+      header.indeterminate = false;
+    }
+
+    function bindHeaderSelectAll(headerId, rowSelector) {
+      const header = document.getElementById(headerId);
+      if (!header || header.dataset.bound) return;
+      header.dataset.bound = "1";
+      header.addEventListener("change", () => {
+        document.querySelectorAll(rowSelector).forEach((cb) => {
+          cb.checked = header.checked;
+        });
+        header.indeterminate = false;
+      });
+    }
+
+    function studentOptions(batchValue) {
+      let rows = studentCatalog;
+      if (batchValue && batchValue !== "all" && batchValue !== "unassigned") {
+        rows = rows.filter((s) => String(s.assignment_id) === batchValue);
+      }
+      return rows.map((s) => {
+        const label = [s.full_name || s.email, s.batch_name].filter(Boolean).join(" · ");
+        return `<option value="${s.id}">${esc(label)}</option>`;
+      }).join("") || `<option value="">No students in this batch</option>`;
+    }
+
+    let studentPollTimer = null;
+    let pageS = { offset: 0, limit: 20, total: 0 };
+    let pageR = { offset: 0, limit: 20, total: 0 };
+    let searchTimers = { s: null, r: null };
+
+    function pagerHtml(state, prefix) {
+      const total = state.total || 0;
+      const limit = state.limit || 20;
+      const offset = state.offset || 0;
+      const page = Math.floor(offset / limit) + 1;
+      const pages = Math.max(1, Math.ceil(total / limit));
+      const from = total ? offset + 1 : 0;
+      const to = Math.min(offset + limit, total);
+      return `<span class="files-pager__meta">${from}–${to} of ${total}</span>
+        <div class="files-pager__btns">
+          <button type="button" class="btn-secondary btn-compact" data-page="${prefix}" data-dir="prev" ${offset <= 0 ? "disabled" : ""}>Prev</button>
+          <span class="files-pager__page">${page}/${pages}</span>
+          <button type="button" class="btn-secondary btn-compact" data-page="${prefix}" data-dir="next" ${offset + limit >= total ? "disabled" : ""}>Next</button>
+        </div>`;
+    }
+
+    function hasActiveStudentJobs(items) {
+      return (items || []).some((item) => item.assess_state && item.assess_state.job_active);
+    }
+
+    function startStudentPoll() {
+      if (studentPollTimer) return;
+      studentPollTimer = setInterval(async () => {
+        try {
+          const items = await loadStudentFiles();
+          if (!hasActiveStudentJobs(items || [])) {
+            clearInterval(studentPollTimer);
+            studentPollTimer = null;
+            await loadReportFiles();
+          }
+        } catch (_) {}
+      }, 3000);
+    }
+
+    async function assessFile(filename, button, provider, model) {
+      button.disabled = true;
+      const prev = button.textContent;
+      button.textContent = "Queuing…";
+      try {
+        await api("/grade/", {
+          method: "POST",
+          body: JSON.stringify({ filename, provider, model, compare: false }),
+        });
+        button.textContent = "Grading…";
+        button.classList.remove("btn-edit");
+        button.classList.add("btn-secondary");
+        startStudentPoll();
+      } catch (ex) {
+        button.textContent = prev;
+        button.disabled = false;
+        throw ex;
+      }
+    }
+
+    requireAuth(["supervisor", "educator"]).then(async () => {
+      const me = await api("/api/me");
+      isSupervisor = me.role === "supervisor";
+      bindModal("map-modal");
+      bindModal("delete-modal");
+      bindModal("assess-modal");
+      bindHeaderSelectAll("sel-all-s", ".sfile");
+      bindHeaderSelectAll("sel-all-r", ".rfile");
+
+      await loadProviders();
+
+      async function loadStudentsCatalog() {
+        const data = await api("/api/students");
+        studentCatalog = data.students || [];
+      }
+
+      async function loadBatchOptions() {
+        const data = await api("/api/assignments?active_only=true");
+        const options = `<option value="all">All batches</option><option value="unassigned">Unassigned</option>`
+          + (data.assignments || []).map((a) => `<option value="${a.id}">${esc(a.label)}</option>`).join("");
+        const keepS = document.getElementById("batch-filter-s").value || "all";
+        const keepR = document.getElementById("batch-filter-r").value || "all";
+        document.getElementById("batch-filter-s").innerHTML = options;
+        document.getElementById("batch-filter-r").innerHTML = options;
+        if ([...document.getElementById("batch-filter-s").options].some((o) => o.value === keepS)) {
+          document.getElementById("batch-filter-s").value = keepS;
+        }
+        if ([...document.getElementById("batch-filter-r").options].some((o) => o.value === keepR)) {
+          document.getElementById("batch-filter-r").value = keepR;
+        }
+      }
+
+      async function loadStudentFiles() {
+        const batch = document.getElementById("batch-filter-s").value || "all";
+        const search = document.getElementById("search-s").value.trim();
+        const params = new URLSearchParams({
+          batch,
+          search,
+          limit: String(pageS.limit),
+          offset: String(pageS.offset),
+        });
+        const s = await api("/api/files/students?" + params.toString());
+        pageS.total = s.total || 0;
+        pageS.limit = s.limit || pageS.limit;
+        pageS.offset = s.offset || 0;
+        if (pageS.offset > 0 && pageS.offset >= pageS.total) {
+          pageS.offset = Math.max(0, pageS.total - pageS.limit);
+          return loadStudentFiles();
+        }
+        const items = flattenSubmissions(s.groups || []);
+        document.getElementById("student-rows").innerHTML = submissionRows(items, s.files || []);
+        document.getElementById("pager-s").innerHTML = pagerHtml(pageS, "s");
+        resetHeaderSelectAll("sel-all-s");
+        if (hasActiveStudentJobs(items)) startStudentPoll();
+        return items;
+      }
+
+      async function loadReportFiles() {
+        const batch = document.getElementById("batch-filter-r").value || "all";
+        const search = document.getElementById("search-r").value.trim();
+        const params = new URLSearchParams({
+          batch,
+          search,
+          limit: String(pageR.limit),
+          offset: String(pageR.offset),
+        });
+        const r = await api("/api/files/reports?" + params.toString());
+        pageR.total = r.total || 0;
+        pageR.limit = r.limit || pageR.limit;
+        pageR.offset = r.offset || 0;
+        if (pageR.offset > 0 && pageR.offset >= pageR.total) {
+          pageR.offset = Math.max(0, pageR.total - pageR.limit);
+          return loadReportFiles();
+        }
+        document.getElementById("reports").innerHTML = reportRows(r.files || [], r.reports || []);
+        document.getElementById("pager-r").innerHTML = pagerHtml(pageR, "r");
+        resetHeaderSelectAll("sel-all-r");
+      }
+
+      async function loadAll() {
+        await Promise.all([loadStudentFiles(), loadReportFiles()]);
+      }
+
+      const show = async (fn) => {
+        const err = document.getElementById("err");
+        err.classList.add("hidden");
+        try { await fn(); } catch (ex) { err.textContent = ex.message; err.classList.remove("hidden"); }
+      };
+
+      await loadStudentsCatalog();
+      await loadBatchOptions();
+      await loadAll();
+
+      document.getElementById("batch-filter-s").addEventListener("change", () => {
+        pageS.offset = 0;
+        loadStudentFiles();
+      });
+      document.getElementById("batch-filter-r").addEventListener("change", () => {
+        pageR.offset = 0;
+        loadReportFiles();
+      });
+      document.getElementById("search-s").addEventListener("input", () => {
+        if (searchTimers.s) clearTimeout(searchTimers.s);
+        searchTimers.s = setTimeout(() => { pageS.offset = 0; loadStudentFiles(); }, 250);
+      });
+      document.getElementById("search-r").addEventListener("input", () => {
+        if (searchTimers.r) clearTimeout(searchTimers.r);
+        searchTimers.r = setTimeout(() => { pageR.offset = 0; loadReportFiles(); }, 250);
+      });
+      document.getElementById("pager-s").addEventListener("click", (e) => {
+        const btn = e.target.closest("[data-page='s']");
+        if (!btn || btn.disabled) return;
+        pageS.offset = btn.dataset.dir === "next"
+          ? pageS.offset + pageS.limit
+          : Math.max(0, pageS.offset - pageS.limit);
+        loadStudentFiles();
+      });
+      document.getElementById("pager-r").addEventListener("click", (e) => {
+        const btn = e.target.closest("[data-page='r']");
+        if (!btn || btn.disabled) return;
+        pageR.offset = btn.dataset.dir === "next"
+          ? pageR.offset + pageR.limit
+          : Math.max(0, pageR.offset - pageR.limit);
+        loadReportFiles();
+      });
+
+      document.getElementById("zip-s").onclick = () => show(() => zipKind("students", "sfile"));
+      document.getElementById("zip-r").onclick = () => show(() => zipKind("reports", "rfile"));
+
+      function openMapModal(kind, fileLabel, batchValue, meta) {
+        mapTarget = { kind, ...meta };
+        document.getElementById("map-title").textContent = kind === "report"
+          ? "Map report to student account"
+          : "Map submission to student account";
+        document.getElementById("map-file").textContent = fileLabel || "";
+        document.getElementById("map-student").innerHTML = studentOptions(batchValue);
+        document.getElementById("map-err").classList.add("hidden");
+        openModal("map-modal");
+      }
+
+      document.getElementById("student-rows").addEventListener("change", (e) => {
+        if (e.target.classList.contains("sfile")) syncHeaderSelectAll("sel-all-s", ".sfile");
+      });
+
+      document.getElementById("reports").addEventListener("change", (e) => {
+        if (e.target.classList.contains("rfile")) syncHeaderSelectAll("sel-all-r", ".rfile");
+      });
+
+      document.getElementById("student-rows").addEventListener("click", async (e) => {
+        const assessBtn = e.target.closest("[data-assess]");
+        const mapBtn = e.target.closest("[data-map-submission]");
+        const removeBtn = e.target.closest("[data-remove-submission]");
+        if (removeBtn) {
+          deleteTarget = { kind: "submission", id: Number(removeBtn.dataset.removeSubmission), file: removeBtn.dataset.file };
+          document.getElementById("delete-title").textContent = "Remove submission";
+          document.getElementById("delete-file").textContent = deleteTarget.file || "";
+          document.getElementById("delete-reason").value = "";
+          document.getElementById("delete-err").classList.add("hidden");
+          openModal("delete-modal");
+          return;
+        }
+        if (assessBtn) {
+          openAssessModal(assessBtn.dataset.assess, assessBtn);
+          return;
+        }
+        if (mapBtn) {
+          openMapModal("submission", mapBtn.dataset.file, document.getElementById("batch-filter-s").value, {
+            submissionId: Number(mapBtn.dataset.mapSubmission),
+          });
+        }
+      });
+
+      document.getElementById("reports").addEventListener("click", (e) => {
+        const mapBtn = e.target.closest("[data-map-report]");
+        const removeBtn = e.target.closest("[data-remove-report]");
+        if (removeBtn) {
+          deleteTarget = { kind: "report", id: Number(removeBtn.dataset.removeReport), file: removeBtn.dataset.file };
+          document.getElementById("delete-title").textContent = "Remove report";
+          document.getElementById("delete-file").textContent = deleteTarget.file || "";
+          document.getElementById("delete-reason").value = "";
+          document.getElementById("delete-err").classList.add("hidden");
+          openModal("delete-modal");
+          return;
+        }
+        if (!mapBtn) return;
+        openMapModal("report", mapBtn.dataset.pdf, document.getElementById("batch-filter-r").value, {
+          reportId: mapBtn.dataset.mapReport ? Number(mapBtn.dataset.mapReport) : null,
+          pdfFilename: mapBtn.dataset.pdf,
+        });
+      });
+
+      document.getElementById("map-save").addEventListener("click", async () => {
+        const err = document.getElementById("map-err");
+        err.classList.add("hidden");
+        const studentId = Number(document.getElementById("map-student").value);
+        if (!mapTarget || !studentId) {
+          err.textContent = "Select a student account.";
+          err.classList.remove("hidden");
+          return;
+        }
+        try {
+          if (mapTarget.kind === "submission") {
+            await api("/api/submissions/" + mapTarget.submissionId, {
+              method: "PATCH",
+              body: JSON.stringify({ student_user_id: studentId }),
+            });
+            await loadStudentFiles();
+          } else {
+            const path = mapTarget.reportId
+              ? "/api/reports/" + mapTarget.reportId
+              : "/api/reports/by-pdf/" + encodeURIComponent(mapTarget.pdfFilename);
+            await api(path, {
+              method: "PATCH",
+              body: JSON.stringify({ student_user_id: studentId }),
+            });
+            await loadReportFiles();
+          }
+          closeModal("map-modal");
+          mapTarget = null;
+        } catch (ex) {
+          err.textContent = ex.message;
+          err.classList.remove("hidden");
+        }
+      });
+
+      document.getElementById("assess-provider").addEventListener("change", populateAssessModels);
+
+      document.getElementById("assess-start").addEventListener("click", async () => {
+        const err = document.getElementById("assess-err");
+        err.classList.add("hidden");
+        if (!assessTarget.filename || !assessTarget.button) return;
+        const provider = document.getElementById("assess-provider").value;
+        const model = document.getElementById("assess-model").value;
+        if (!provider || !model) {
+          err.textContent = "Select a provider and model.";
+          err.classList.remove("hidden");
+          return;
+        }
+        try {
+          closeModal("assess-modal");
+          await show(() => assessFile(assessTarget.filename, assessTarget.button, provider, model));
+          assessTarget = { filename: "", button: null };
+        } catch (ex) {
+          err.textContent = ex.message;
+          err.classList.remove("hidden");
+          openModal("assess-modal");
+        }
+      });
+
+      document.getElementById("delete-save").addEventListener("click", async () => {
+        const err = document.getElementById("delete-err");
+        err.classList.add("hidden");
+        const reason = document.getElementById("delete-reason").value.trim();
+        if (!deleteTarget || !reason) {
+          err.textContent = "Enter a reason for removal.";
+          err.classList.remove("hidden");
+          return;
+        }
+        try {
+          const path = deleteTarget.kind === "submission"
+            ? "/api/submissions/" + deleteTarget.id + "/archive"
+            : "/api/reports/" + deleteTarget.id + "/archive";
+          await api(path, {
+            method: "POST",
+            body: JSON.stringify({ reason, confirm: true }),
+          });
+          closeModal("delete-modal");
+          deleteTarget = null;
+          await loadAll();
+        } catch (ex) {
+          err.textContent = ex.message;
+          err.classList.remove("hidden");
+        }
+      });
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Review Queue</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="wide">
+  <div id="app-nav"></div>
+  <main class="portal-shell portal-shell--wide">
+    <div class="table-wrap">
+      <table class="table-dense" id="queue-table">
+        <thead>
+          <tr>
+            <th>Student</th>
+            <th>Assignment</th>
+            <th>Report</th>
+            <th>AI score</th>
+            <th class="col-actions">Action</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+    <p id="queue-empty" class="empty-state hidden">All assignments reviewed.</p>
+    <p id="queue-err" class="error hidden"></p>
+  </main>
+  <script src="/static/nav.js"></script>
+  <script>
+    let reports = [];
+
+    function esc(v) {
+      return String(v || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+    }
+
+    function renderRows() {
+      const needle = normalizeText(getNavSearch());
+      let rows = reports.filter((r) => r.record);
+      if (needle) {
+        rows = rows.filter((r) => {
+          const rec = r.record;
+          const hay = normalizeText(`${rec.student_name} ${rec.assignment_title} ${rec.batch_name} ${r.name}`);
+          return hay.includes(needle);
+        });
+      }
+      rows.sort((a, b) => (b.record.generated_at || "").localeCompare(a.record.generated_at || ""));
+
+      const tbody = document.getElementById("rows");
+      const empty = document.getElementById("queue-empty");
+      tbody.innerHTML = rows.map((r) => {
+        const rec = r.record;
+        const label = [rec.assignment_title, rec.batch_name].filter(Boolean).join(" / ") || "Unassigned";
+        return `<tr>
+          <td class="cell-strong">${esc(rec.student_name || "Unknown")}</td>
+          <td>${esc(label)}</td>
+          <td>${esc(r.name)}</td>
+          <td>${rec.total_score_percent ?? "—"}%</td>
+          <td class="col-actions">
+            <button type="button" class="btn-ghost" data-review="${rec.id}">Review</button>
+            <button type="button" class="btn-edit" data-quick="${rec.id}">Quick approve</button>
+          </td>
+        </tr>`;
+      }).join("");
+
+      empty.classList.toggle("hidden", rows.length > 0);
+      document.getElementById("queue-table").classList.toggle("hidden", rows.length === 0);
+    }
+
+    requireAuth(["supervisor", "educator"]).then(async () => {
+      async function load() {
+        const err = document.getElementById("queue-err");
+        err.classList.add("hidden");
+        try {
+          const data = await api("/api/reports?queue=1&search=" + encodeURIComponent(getNavSearch()));
+          reports = data.reports || [];
+          renderRows();
+        } catch (ex) {
+          err.textContent = ex.message || "Failed to sync queue.";
+          err.classList.remove("hidden");
+        }
+      }
+
+      onNavSearch(() => load());
+
+      document.getElementById("rows").addEventListener("click", async (e) => {
+        const review = e.target.closest("[data-review]");
+        const quick = e.target.closest("[data-quick]");
+        if (review) {
+          location.href = "/report?id=" + review.dataset.review;
+          return;
+        }
+        if (quick) {
+          const id = quick.dataset.quick;
+          quick.disabled = true;
+          try {
+            const current = await api("/api/reports/" + id);
+            await api("/api/reports/" + id + "/review", {
+              method: "PUT",
+              body: JSON.stringify({ grading_result: current.grading_result || {} }),
+            });
+            await load();
+          } catch (ex) {
+            document.getElementById("queue-err").textContent = ex.message;
+            document.getElementById("queue-err").classList.remove("hidden");
+          } finally {
+            quick.disabled = false;
+          }
+        }
+      });
+
+      await load();
+    });
+  </script>
+</body>
+</html>

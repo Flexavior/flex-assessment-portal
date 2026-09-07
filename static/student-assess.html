@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Assess</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="wide">
+  <div id="app-nav"></div>
+  <main class="portal-shell">
+    <section class="panel">
+      <h2 class="section-title">Assess submission</h2>
+      <div class="field-row">
+        <label for="pick">Your submission</label>
+        <select id="pick"></select>
+      </div>
+      <div class="form-actions">
+        <button type="button" id="self-grade">Run assessment</button>
+      </div>
+      <p id="job-msg" class="error hidden"></p>
+    </section>
+
+    <h2 class="section-title">Assessment history</h2>
+    <div class="table-wrap">
+      <table class="table-dense">
+        <thead><tr><th>Report</th><th>Score</th></tr></thead>
+        <tbody id="reports"></tbody>
+      </table>
+    </div>
+  </main>
+  <script src="/static/nav.js"></script>
+  <script>
+    let timer = null;
+
+    function esc(v) {
+      return String(v || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+    }
+
+    async function refresh() {
+      const data = await api("/api/student/work?search=" + encodeURIComponent(getNavSearch()));
+      const subs = data.submissions || [];
+      document.getElementById("pick").innerHTML = subs
+        .map((s) => `<option value="${esc(s.stored_filename)}">${esc(s.stored_filename)}</option>`)
+        .join("") || `<option value="">No submissions yet</option>`;
+      document.getElementById("self-grade").disabled = !subs.length;
+
+      document.getElementById("reports").innerHTML = (data.reports || []).map((r) =>
+        `<tr data-search-item data-search="${esc(r.pdf_filename)}">
+          <td>${esc(r.pdf_filename)}</td>
+          <td>${r.total_score_percent ?? "—"}%</td>
+        </tr>`
+      ).join("") || `<tr><td colspan="2">No approved grades yet.</td></tr>`;
+    }
+
+    requireAuth(["student"]).then(async () => {
+      const me = await api("/api/me");
+      if (!me.can_self_grade) {
+        location.href = "/student";
+        return;
+      }
+      await refresh();
+      onNavSearch(() => refresh());
+
+      document.getElementById("self-grade").onclick = async () => {
+        const filename = document.getElementById("pick").value;
+        const msg = document.getElementById("job-msg");
+        msg.classList.add("hidden");
+        if (!filename) return;
+        const btn = document.getElementById("self-grade");
+        btn.disabled = true;
+        try {
+          const job = await api("/api/student/self-grade", { method: "POST", body: JSON.stringify({ filename }) });
+          msg.textContent = "Queued job " + job.job_id + "…";
+          msg.className = "ok";
+          msg.classList.remove("hidden");
+          if (timer) clearInterval(timer);
+          timer = setInterval(async () => {
+            const st = await api("/api/jobs/" + job.job_id);
+            msg.textContent = st.status + (st.report ? " — " + st.report : "") + (st.error ? " — " + st.error : "");
+            msg.className = st.status === "failed" ? "error" : "ok";
+            if (st.status === "done" || st.status === "failed") {
+              clearInterval(timer);
+              timer = null;
+              btn.disabled = false;
+              await refresh();
+            }
+          }, 2500);
+        } catch (ex) {
+          msg.textContent = ex.message;
+          msg.className = "error";
+          msg.classList.remove("hidden");
+          btn.disabled = false;
+        }
+      };
+    });
+  </script>
+</body>
+</html>

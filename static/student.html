@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Student Dashboard</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="wide">
+  <div id="app-nav"></div>
+  <main class="portal-shell portal-shell--wide">
+    <section id="submit-section" class="panel student-submit-panel">
+      <h2 class="section-title">Submit assignment</h2>
+      <form id="submit-form">
+        <label class="dropzone-academic dropzone-academic--compact" id="dropzone" for="file">
+          <strong>Drop file or click to browse</strong>
+          <span>PDF, DOCX, TXT</span>
+          <input id="file" type="file" accept=".pdf,.docx,.doc,.txt">
+        </label>
+        <p id="file-name" class="file-name"></p>
+        <label class="check-row">
+          <input type="checkbox" id="pledge">
+          I certify this is my original work.
+        </label>
+        <div class="form-actions">
+          <button type="submit" id="submit-btn">Submit assignment</button>
+        </div>
+        <p id="submit-err" class="error hidden"></p>
+      </form>
+    </section>
+
+    <section id="submit-closed" class="panel hidden">
+      <h2 class="section-title">Submit assignment</h2>
+      <p id="closed-msg" class="error"></p>
+    </section>
+
+    <h2 class="section-title">My submissions</h2>
+    <div class="table-wrap">
+      <table class="table-dense">
+        <thead>
+          <tr>
+            <th>File</th>
+            <th>Batch</th>
+            <th>Submitted</th>
+            <th>Status</th>
+            <th class="col-actions">Report</th>
+          </tr>
+        </thead>
+        <tbody id="subs"></tbody>
+      </table>
+    </div>
+    <p id="page-err" class="error hidden"></p>
+  </main>
+  <script src="/static/nav.js"></script>
+  <script>
+    function esc(v) {
+      return String(v || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+    }
+
+    function submissionStatus(s) {
+      if (s.grade_state === "approved") {
+        const score = s.score_percent ?? "—";
+        return `<span class="chip chip--ok">${esc(score)}%</span>`;
+      }
+      if (s.grade_state === "under_review") {
+        return `<span class="chip">Under review</span>`;
+      }
+      return `<span class="chip">Submitted</span>`;
+    }
+
+    function submissionReportLink(s) {
+      if (s.grade_state === "approved" && s.report_pdf) {
+        return `<a class="btn-ghost btn-compact" href="/reports/${encodeURIComponent(s.report_pdf)}?download=1">Download</a>`;
+      }
+      if (s.grade_state === "under_review" && s.preliminary_pdf) {
+        return `<a class="btn-ghost btn-compact" href="/reports/${encodeURIComponent(s.preliminary_pdf)}?download=1">Preliminary</a>`;
+      }
+      return "—";
+    }
+
+    function updateSubmitState() {
+      const file = document.getElementById("file").files[0];
+      const open = !document.getElementById("submit-section").classList.contains("hidden");
+      document.getElementById("submit-btn").disabled = !open || !file || !document.getElementById("pledge").checked;
+      document.getElementById("file-name").textContent = file ? file.name : "";
+      document.getElementById("dropzone").classList.toggle("is-error", !!(file && !/\.(pdf|docx?|txt)$/i.test(file.name)));
+    }
+
+    async function refresh() {
+      const err = document.getElementById("page-err");
+      err.classList.add("hidden");
+      try {
+        const data = await api("/api/student/work?search=" + encodeURIComponent(getNavSearch()));
+        const dl = data.deadline || {};
+        const submitOpen = dl.is_open !== false;
+
+        document.getElementById("submit-section").classList.toggle("hidden", !submitOpen);
+        document.getElementById("submit-closed").classList.toggle("hidden", submitOpen);
+        if (!submitOpen) {
+          document.getElementById("closed-msg").textContent = dl.deadline_local
+            ? `Submission closed. Deadline was ${dl.deadline_local}.`
+            : "The submission window is closed.";
+        } else {
+          updateSubmitState();
+        }
+
+        document.getElementById("subs").innerHTML = (data.submissions || []).map((s) =>
+          `<tr data-search-item data-search="${esc(s.stored_filename)} ${esc(s.assignment_title)} ${esc(s.batch_name)}">
+            <td class="cell-truncate" title="${esc(s.stored_filename)}">${esc(s.stored_filename)}</td>
+            <td>${esc([s.assignment_title, s.batch_name].filter(Boolean).join(" / ") || "Unassigned")}</td>
+            <td>${esc(s.submitted_at)}</td>
+            <td>${submissionStatus(s)}</td>
+            <td class="col-actions">${submissionReportLink(s)}</td>
+          </tr>`
+        ).join("") || `<tr><td colspan="5">No submissions yet.</td></tr>`;
+      } catch (ex) {
+        err.textContent = ex.message || "Unable to load dashboard.";
+        err.classList.remove("hidden");
+      }
+    }
+
+    requireAuth(["student"]).then(() => {
+      const fileInput = document.getElementById("file");
+      const zone = document.getElementById("dropzone");
+      fileInput.addEventListener("change", updateSubmitState);
+      document.getElementById("pledge").addEventListener("change", updateSubmitState);
+      zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("drag"); });
+      zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
+      zone.addEventListener("drop", (e) => {
+        e.preventDefault();
+        zone.classList.remove("drag");
+        if (e.dataTransfer.files.length) {
+          fileInput.files = e.dataTransfer.files;
+          updateSubmitState();
+        }
+      });
+
+      document.getElementById("submit-form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const file = fileInput.files[0];
+        const err = document.getElementById("submit-err");
+        err.classList.add("hidden");
+        if (!file || !document.getElementById("pledge").checked) return;
+        const btn = document.getElementById("submit-btn");
+        btn.disabled = true;
+        try {
+          const body = new FormData();
+          body.append("file", file);
+          await api("/api/student/submit", { method: "POST", body, headers: {} });
+          fileInput.value = "";
+          document.getElementById("pledge").checked = false;
+          await refresh();
+        } catch (ex) {
+          err.textContent = ex.message;
+          err.classList.remove("hidden");
+        } finally {
+          updateSubmitState();
+        }
+      });
+
+      refresh();
+      onNavSearch(() => refresh());
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Assessment Report</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="wide report-view">
+  <div id="app-nav"></div>
+  <div class="report-shell">
+    <header class="report-header">
+      <div class="report-header__title">
+        <h1 id="student-name">Assessment report</h1>
+        <p class="report-header__meta" id="assignment-meta"></p>
+        <p id="hash-status" class="hash-status hash-status--pending">Checking file integrity…</p>
+      </div>
+      <div class="report-header__scores">
+        <div class="score-badge" id="score-badge">—</div>
+        <p class="word-count-badge hidden" id="word-count-badge"></p>
+      </div>
+    </header>
+
+    <div id="loading" class="report-loading">Loading report…</div>
+    <div id="report-body" class="report-split hidden">
+      <section class="report-pane report-pane--pdf">
+        <div class="report-pane__head">Generated PDF</div>
+        <div class="report-pane__body">
+          <embed id="pdf-embed" class="report-viewer" type="application/pdf" title="Generated assessment PDF">
+        </div>
+      </section>
+      <section class="report-pane report-pane--rubric">
+        <div class="report-pane__head">Rubric — scroll to review each criterion</div>
+        <div class="report-pane__body">
+          <div class="rubric-list" id="rubric"></div>
+          <div class="rubric-overall">
+            <label for="feedback">Overall feedback</label>
+            <textarea id="feedback" rows="4"></textarea>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <footer class="report-actions hidden" id="report-actions">
+      <div class="report-actions__group">
+        <button type="button" class="btn-secondary" id="verify">Verify hash</button>
+        <a id="pdf-download" class="btn-secondary" href="#" download>Download</a>
+        <button type="button" class="btn-secondary" onclick="location.href='/review'">Back to queue</button>
+      </div>
+      <div class="report-actions__group">
+        <button type="button" class="btn-secondary" id="amend">Save amendments</button>
+        <button type="button" id="save">Approve grade</button>
+      </div>
+      <p id="action-msg" class="action-msg hidden"></p>
+    </footer>
+  </div>
+  <script src="/static/nav.js"></script>
+  <script>
+    let result = {};
+    let reportId = null;
+    let pdfBlobUrl = null;
+
+    function esc(v) {
+      return String(v || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function recalcTotal() {
+      const items = [];
+      document.querySelectorAll(".rubric-item").forEach((row, i) => {
+        const score = parseFloat(row.querySelector('[data-k="score"]')?.value);
+        const max = parseFloat(row.querySelector('[data-k="max_score"]')?.value);
+        items[i] = { score, max_score: max };
+        const badge = row.querySelector(".rubric-item__score");
+        if (badge) badge.textContent = `${Number.isNaN(score) ? "—" : score} / ${Number.isNaN(max) ? "—" : max}`;
+      });
+      let earned = 0;
+      let maxTotal = 0;
+      items.forEach((item) => {
+        if (!Number.isNaN(item.score)) earned += item.score;
+        if (!Number.isNaN(item.max_score)) maxTotal += item.max_score;
+      });
+      const pct = maxTotal > 0 ? Math.round((earned / maxTotal) * 1000) / 10 : null;
+      if (pct != null) {
+        document.getElementById("score-badge").textContent = pct;
+      }
+      return pct;
+    }
+
+    function renderRubric(items) {
+      document.getElementById("rubric").innerHTML = (items || []).map((c, i) =>
+        `<article class="rubric-item is-open" data-i="${i}">
+          <div class="rubric-item__head">
+            <span class="rubric-item__title">${esc(c.criterion || "Criterion")}</span>
+            <span class="rubric-item__score">${c.score ?? "—"} / ${c.max_score ?? "—"}</span>
+          </div>
+          <div class="rubric-item__body">
+            <div class="rubric-fields">
+              <div class="field-row field-row--compact">
+                <label class="label">Score</label>
+                <input type="number" step="0.5" data-i="${i}" data-k="score" value="${c.score ?? ""}">
+              </div>
+              <div class="field-row field-row--compact">
+                <label class="label">Max</label>
+                <input type="number" step="0.5" data-i="${i}" data-k="max_score" value="${c.max_score ?? ""}">
+              </div>
+            </div>
+            <div class="field-row field-row--full rubric-justification">
+              <label class="label">Justification</label>
+              <textarea data-i="${i}" data-k="justification" rows="3">${esc(c.justification || "")}</textarea>
+            </div>
+          </div>
+        </article>`
+      ).join("") || `<p class="empty-inline">No rubric criteria in this report.</p>`;
+
+      document.querySelectorAll("#rubric input, #rubric textarea").forEach((el) => {
+        el.addEventListener("input", recalcTotal);
+      });
+      recalcTotal();
+    }
+
+    function collect() {
+      const pct = recalcTotal();
+      const items = [];
+      document.querySelectorAll(".rubric-item").forEach((row, i) => {
+        const base = (result.criteria_scores || [])[i] || {};
+        const scoreRaw = row.querySelector('[data-k="score"]')?.value;
+        const maxRaw = row.querySelector('[data-k="max_score"]')?.value;
+        const score = parseFloat(scoreRaw);
+        const max_score = parseFloat(maxRaw);
+        items.push({
+          criterion: base.criterion || "Criterion",
+          score: Number.isNaN(score) ? scoreRaw : score,
+          max_score: Number.isNaN(max_score) ? maxRaw : max_score,
+          justification: row.querySelector('[data-k="justification"]')?.value || "",
+        });
+      });
+      result.student_name = document.getElementById("student-name").textContent;
+      result.total_score_percent = pct != null ? pct : result.total_score_percent;
+      result.feedback = document.getElementById("feedback").value;
+      result.criteria_scores = items;
+      return result;
+    }
+
+    function setHashStatus(v) {
+      const el = document.getElementById("hash-status");
+      el.textContent = v.detail || (v.ok ? "Hash matches." : "Hash check failed.");
+      el.className = "hash-status " + (v.breach ? "hash-status--breach" : v.ok ? "hash-status--ok" : "hash-status--warn");
+    }
+
+    function setActionMsg(text, ok) {
+      const el = document.getElementById("action-msg");
+      el.textContent = text;
+      el.className = "action-msg " + (ok ? "ok" : "error");
+      el.classList.remove("hidden");
+    }
+
+    async function verifyHash() {
+      const v = await api("/api/reports/" + reportId + "/verify");
+      setHashStatus(v);
+      return v;
+    }
+
+    async function loadPdf(filename) {
+      if (pdfBlobUrl) {
+        URL.revokeObjectURL(pdfBlobUrl);
+        pdfBlobUrl = null;
+      }
+      const res = await fetch("/reports/" + encodeURIComponent(filename), { credentials: "same-origin" });
+      if (!res.ok) throw new Error("Could not load PDF for viewing.");
+      const blob = await res.blob();
+      pdfBlobUrl = URL.createObjectURL(blob);
+      document.getElementById("pdf-embed").src = pdfBlobUrl;
+      const dl = document.getElementById("pdf-download");
+      dl.href = pdfBlobUrl;
+      dl.download = filename;
+    }
+
+    requireAuth(["supervisor", "educator"]).then(async () => {
+      reportId = new URLSearchParams(location.search).get("id");
+      if (!reportId) {
+        document.getElementById("loading").textContent = "Missing report ID.";
+        return;
+      }
+      try {
+        const current = await api("/api/reports/" + reportId);
+        result = current.grading_result || {};
+        const rep = current.report;
+        document.getElementById("student-name").textContent = result.student_name || rep.student_name || "Student";
+        document.getElementById("assignment-meta").textContent = rep.pdf_filename;
+        document.getElementById("score-badge").textContent = result.total_score_percent ?? rep.total_score_percent ?? "—";
+        const wc = result.word_count || {};
+        const wcEl = document.getElementById("word-count-badge");
+        if (wc.message || result.submission_word_count || result.extraction_word_count) {
+          wcEl.textContent = wc.message || `Word count: ${result.submission_word_count || result.extraction_word_count}`;
+          wcEl.classList.remove("hidden");
+          wcEl.classList.remove("word-count-badge--warn", "word-count-badge--over");
+          if (wc.level === "over_limit") wcEl.classList.add("word-count-badge--over");
+          else if (wc.warn) wcEl.classList.add("word-count-badge--warn");
+        } else {
+          wcEl.classList.add("hidden");
+        }
+        document.getElementById("feedback").value = result.feedback || "";
+        renderRubric(result.criteria_scores || []);
+        await loadPdf(rep.pdf_filename);
+        document.getElementById("loading").classList.add("hidden");
+        document.getElementById("report-body").classList.remove("hidden");
+        document.getElementById("report-actions").classList.remove("hidden");
+        verifyHash().catch(() => {
+          setHashStatus({ ok: false, breach: false, detail: "Could not verify hash." });
+        });
+      } catch (ex) {
+        document.getElementById("loading").textContent = ex.message || "Failed to load report.";
+      }
+
+      document.getElementById("verify").onclick = () => verifyHash().catch((ex) => setHashStatus({ ok: false, detail: ex.message }));
+
+      document.getElementById("amend").onclick = async () => {
+        try {
+          await api("/api/reports/" + reportId + "/grading", {
+            method: "PATCH",
+            body: JSON.stringify({ grading_result: collect() }),
+          });
+          setActionMsg("Amendments saved. PDF unchanged until you approve.", true);
+        } catch (ex) {
+          setActionMsg(ex.message, false);
+        }
+      };
+
+      document.getElementById("save").onclick = async () => {
+        try {
+          const saved = await api("/api/reports/" + reportId + "/review", {
+            method: "PUT",
+            body: JSON.stringify({ grading_result: collect() }),
+          });
+          await loadPdf(saved.report.pdf_filename);
+          setActionMsg("Grade approved. PDF regenerated.", true);
+          await verifyHash();
+        } catch (ex) {
+          setActionMsg(ex.message, false);
+        }
+      };
+    });
+  </script>
+</body>
+</html>

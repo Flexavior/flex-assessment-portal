@@ -1,0 +1,60 @@
+COMPUTER NETWORKING ASSIGNMENT - B.SC (IT) Batch-09
+
+Course: Computer Networking: A Top Down Approach (7th Edition)
+Word Count Requirement: 1200-1500 words (not more than 2000)
+
+=====================================================================
+ASSIGNMENT QUESTIONS
+=====================================================================
+
+Q1: Illustrate how the users access the internet. Make sure to include key components and terms introduced in this chapter. You can draw by hand then take the picture or use the tool, draw.io and then add into the answer. Explain the function of key components in your diagram and identify the potential bottlenecks in your network. Justify your reasoning why network performance and security is important.
+
+Q2: Describe your understandings of data encapsulation and OSI layers in the order of data, segment, packet, frame, bit.
+
+Q3: Describe the most popular protocols http, smtp and DNS. Transport services work with these protocols TCP and UDP. The network applications relevant to the three protocols.
+
+Q4: How the message, processes could be managed to secure at the user stations and during the transmission?
+
+Q5: The key differences between client-server and peer-to-peer application architecture. The ways to make file transfer and distributions faster using the web caching, CDN versus peer-to-peer networks.
+
+Q6: Differences in Client/Server socket TCP and UDP interaction.
+
+Q7: What are the main functions offered by the transport layer? How multiplexing, demultiplexing works at sender and receiver side?
+
+Q8: What are the two states of FSM? Describe key improvements in the rdt versions.
+
+Q9: Describe two pipelining protocols and differences between GBN and SR.
+
+Q10: Use the packet analyser (Wireshark), capture the screen shots of three way hand-shake.
+
+Q11: What is CWND and RWND?
+
+Q12: Data plane represents to which network layer functions, router manages the packets, traffic flow by switching, queuing, buffering and scheduling policies. How?
+
+Q13: Define Class A,B,C IPv4 subnetting and longest prefix matching for packet forwarding decision.
+
+Q14: Where does it need IP fragmentation and reassembly?
+
+Q15: Differences between Destination based Forwarding and Generalized Forwarding explanation with examples.
+
+Q16: Sketch how Port Address Translation works.
+
+Q17: Build comparison table for Inter-domain routing protocol, Intra-domain routing protocol (BGP and OSPF).
+
+Q18: You are working as Network Services Manager of local enterprise in Myanmar. Which RIR provide public ASN for your company? Describe in the two formats of IANA reserved range of private ASNs. Explain ASN 23456.
+
+Q19: Packet payload in 8 ASCII character eight-bit values show below. Compute two-dimensional parity bits for each of the 4 rows and 16 columns assuming odd parity.
+    01001101 01011001
+    01000001 01001110
+    01001101 01000001
+    01010010 01010010
+
+Q20: Which random access MAC protocols used in Ethernet to detect collisions and recover from collisions, explain about Ethernet switch self-learning and forwarding?
+
+Q21: Which port carries frames between Engineering and Sales VLAN over the separate physical switches? How can be done forwarding between these two VLANs?
+
+Q22: How the application server inside the typical data centre networks response the client request from external network. (discussion points should include client, internet, border router, access router, load balancer, Tier 1 & 2 switches, Top of the rack switches and computing servers, do you see the SPOF (single point of failure)?
+
+=====================================================================
+END OF ASSIGNMENT QUESTIONS
+=====================================================================

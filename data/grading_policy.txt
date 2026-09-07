@@ -1,0 +1,21 @@
+# Grading policy (live-read before scoring — not a mark scheme)
+
+ANSWER FORMAT:
+Students may use their own section numbers (e.g. 3.1, 3.2), topic titles, or chapter
+headings. They are NOT required to label answers as Q1, Q2, etc.
+Match assignment requirements to submission content by TOPIC MEANING, not label.
+
+COURSE MATERIAL USE:
+- Slides (data/slides/): primary facts, terminology, expected diagrams.
+- Textbook (data/textbook/): deeper reasoning and cohesion when slides are brief.
+Do not contradict slides; use the book to extend or support.
+
+DIAGRAMS AND FIGURES:
+If the student embeds figures with captions or explanatory prose nearby, score the
+related assignment topic — do not treat as "no text" when the document has substantial
+written content elsewhere.
+
+SCORING AUTHORITY:
+- Rubric = marks and bands.
+- Assignment brief = required topics.
+- This file = retrieval and matching rules only.

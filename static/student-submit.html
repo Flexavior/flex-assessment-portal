@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Submit Assignment</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="wide">
+  <div id="app-nav"></div>
+  <main class="submit-shell">
+    <div class="submit-meta">
+      <p class="code" id="course-code">Loading…</p>
+      <h1 id="assignment-title">Submission</h1>
+      <p class="hint" id="deadline-line"></p>
+    </div>
+
+    <form id="submit-form">
+      <label class="dropzone-academic" id="dropzone" for="file">
+        <strong>Drop file or click to browse</strong>
+        <span>PDF, DOCX, TXT</span>
+        <input id="file" type="file" accept=".pdf,.docx,.doc,.txt" required>
+      </label>
+      <p id="file-name" class="file-name"></p>
+      <div id="progress" class="progress-bar hidden"><div class="progress-bar__fill" id="progress-fill"></div></div>
+
+      <label class="check-row">
+        <input type="checkbox" id="pledge" required>
+        I certify this is my original work.
+      </label>
+
+      <div class="form-actions">
+        <a class="btn-secondary" href="/student" style="text-decoration:none">Cancel</a>
+        <button type="submit" id="submit-btn" disabled>Confirm submission</button>
+      </div>
+      <p id="submit-msg" class="hint"></p>
+      <p id="submit-err" class="error hidden"></p>
+    </form>
+  </main>
+
+  <div id="confirm-modal" class="modal hidden" aria-hidden="true">
+    <div class="modal__dialog" role="dialog" aria-labelledby="confirm-title">
+      <div class="modal__head">
+        <h2 id="confirm-title">Confirm submission</h2>
+        <button type="button" class="modal__close" data-close-modal aria-label="Close">&times;</button>
+      </div>
+      <div class="modal__body">
+        <p class="lede">Your file will be submitted for review. You cannot replace it without contacting your educator.</p>
+        <p id="confirm-file" class="hint"></p>
+      </div>
+      <div class="modal__foot">
+        <button type="button" class="btn-secondary" data-close-modal>Cancel</button>
+        <button type="button" id="confirm-send" class="btn-primary">Submit</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/nav.js"></script>
+  <script>
+    let pendingFile = null;
+
+    function updateSubmitState() {
+      const file = document.getElementById("file").files[0];
+      const ok = file && document.getElementById("pledge").checked;
+      document.getElementById("submit-btn").disabled = !ok;
+      document.getElementById("file-name").textContent = file ? file.name : "";
+      const zone = document.getElementById("dropzone");
+      zone.classList.toggle("is-error", file && !/\.(pdf|docx?|txt)$/i.test(file.name));
+    }
+
+    requireAuth(["student"]).then(async () => {
+      bindModal("confirm-modal");
+      const data = await api("/api/student/work");
+      const assign = data.assignment;
+      const dl = data.deadline || {};
+      document.getElementById("course-code").textContent = assign
+        ? [assign.title, assign.batch_name].filter(Boolean).join(" · ")
+        : "Unassigned batch";
+      document.getElementById("assignment-title").textContent = assign?.label || assign?.title || "Assignment submission";
+      const urgent = dl.deadline_local && dl.is_open !== false;
+      document.getElementById("deadline-line").textContent = dl.deadline_local
+        ? `Deadline: ${dl.deadline_local}${dl.is_open === false ? " (closed)" : ""}`
+        : "No deadline configured — you may submit anytime.";
+      document.getElementById("deadline-line").className = urgent ? "hint warn" : "hint";
+      if (dl.is_open === false) {
+        document.getElementById("submit-btn").disabled = true;
+        document.getElementById("pledge").disabled = true;
+        document.getElementById("file").disabled = true;
+        document.getElementById("submit-err").textContent = "The submission window for your batch is closed.";
+        document.getElementById("submit-err").classList.remove("hidden");
+      } else {
+        updateSubmitState();
+      }
+
+      const fileInput = document.getElementById("file");
+      const zone = document.getElementById("dropzone");
+      fileInput.addEventListener("change", updateSubmitState);
+      document.getElementById("pledge").addEventListener("change", updateSubmitState);
+      zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("drag"); });
+      zone.addEventListener("dragleave", () => zone.classList.remove("drag"));
+      zone.addEventListener("drop", (e) => {
+        e.preventDefault();
+        zone.classList.remove("drag");
+        if (e.dataTransfer.files.length) {
+          fileInput.files = e.dataTransfer.files;
+          updateSubmitState();
+        }
+      });
+
+      document.getElementById("submit-form").addEventListener("submit", (e) => {
+        e.preventDefault();
+        pendingFile = fileInput.files[0];
+        if (!pendingFile) return;
+        document.getElementById("confirm-file").textContent = pendingFile.name;
+        openModal("confirm-modal");
+      });
+
+      document.getElementById("confirm-send").addEventListener("click", async () => {
+        const msg = document.getElementById("submit-msg");
+        const err = document.getElementById("submit-err");
+        err.classList.add("hidden");
+        const progress = document.getElementById("progress");
+        const fill = document.getElementById("progress-fill");
+        progress.classList.remove("hidden");
+        fill.style.width = "35%";
+        try {
+          const body = new FormData();
+          body.append("file", pendingFile);
+          fill.style.width = "70%";
+          const res = await fetch("/api/student/submit", { method: "POST", body, credentials: "same-origin" });
+          const out = await res.json();
+          if (!res.ok) throw new Error(out.detail || "Submit failed");
+          fill.style.width = "100%";
+          closeModal("confirm-modal");
+          msg.textContent = "Submitted. Status: Under review.";
+          setTimeout(() => { location.href = "/student"; }, 900);
+        } catch (ex) {
+          closeModal("confirm-modal");
+          err.textContent = ex.message;
+          err.classList.remove("hidden");
+          progress.classList.add("hidden");
+        }
+      });
+    });
+  </script>
+</body>
+</html>

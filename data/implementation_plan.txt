@@ -1,0 +1,285 @@
+================================================================================
+EDUCATOR ASSESSMENT AUTOMATION - IMPLEMENTATION PLAN
+================================================================================
+Project: Grading System for Computer Networking Course
+Date: 2026-08-18
+Status: PARTIALLY IMPLEMENTED - See "CURRENT STATE" below
+
+================================================================================
+1. PROJECT OVERVIEW
+================================================================================
+
+This system automates the grading of student assignment submissions using
+AI/LLM with RAG (Retrieval-Augmented Generation). It:
+- Accepts student report files uploaded into data/students/
+- Uses baseline course materials (slides, textbook) and rubric as reference
+- Uses the assignment questions to check what the student was ASKED to answer
+- Scores the student against the rubric using an LLM (Ollama + qwen)
+- Generates PDF reports in data/reports/ as {student_name}_{date}.pdf
+
+The system is lightweight, portable, and can eventually be accessed via a
+simple HTML/CSS/JavaScript webpage for file upload.
+
+================================================================================
+2. DIRECTORY STRUCTURE
+================================================================================
+
+Grading-system-Dev/
+├── app/
+│   ├── config.py        # Configuration constants
+│   ├── grader.py        # Assignment-aware grading prompt + logic
+│   ├── ingestion.py     # File parsers (docx, pdf, pptx)
+│   ├── llm.py           # LLM and embedding model setup (Ollama)
+│   ├── main.py          # FastAPI server entry point
+│   ├── rag.py           # Vector store build + context retrieval
+│   ├── report.py        # PDF report generation
+│   └── schemas.py       # Pydantic data models
+├── data/
+│   ├── assignments/     # ASSIGNMENT QUESTIONS (official brief)
+│   ├── index/           # Persisted vector store (one-time build)
+│   ├── reports/         # Generated student PDF reports
+│   ├── rubric/          # Grading rubric (official marking scheme)
+│   ├── slides/          # Course slides (baseline knowledge)
+│   ├── students/        # Student submissions (input)
+│   └── textbook/        # Course textbook (optional baseline)
+├── requirements.txt
+└── run.py               # Server launcher
+
+================================================================================
+3. CURRENT STATE (WHAT HAS BEEN COMPLETED)
+================================================================================
+
+[✓] = Done | [ ] = Not done | [△] = Partially done
+
+1. [✓] data/assignments/ folder created
+    - File: assignment_1_computer_networking.txt
+    - Contains all 22 assignment questions from the rubric docx
+
+2. [✓] app/config.py UPDATED
+    - Added: ASSIGNMENT_DIR, REPORT_DIR, STUDENT_DIR, RUBRIC_DIR
+    - Added: INDEX_INPUT_DIRS = [assignments, rubric, textbook, slides]
+    - Changed: TOP_K from 1 to 3 (more context for better grading)
+
+3. [✓] app/rag.py UPDATED
+    - initialize_index() now builds index from INDEX_INPUT_DIRS (includes assignments)
+    - Added retrieve_grading_context() function that:
+      * Layer 1: Includes the assignment brief in grading context
+      * Layer 2: Retrieves rubric criteria related to the student content
+      * Layer 3: Retrieves course material related to the student content
+    - retrieve_context() now accepts custom top_k parameter
+
+4. [✓] app/grader.py REWRITTEN
+    - Added parse_student_filename() to extract student name from filenames
+    - Added find_submission_date() to extract submission date from document text
+    - Added grade_student() which:
+      * Retrieves layered context (assignment + rubric + course)
+      * Prompts LLM to check question coverage + rubric scoring + factual accuracy
+      * Returns structured JSON result with:
+        - assignment_coverage (per-question)
+        - criteria_scores (per rubric section)
+        - total_score_percent
+        - strengths / areas_for_improvement
+        - missing_or_partial questions
+        - contradictions with course material
+        - overall feedback
+    - Added build_report_filename() for {student_name}_{date}.pdf naming
+
+5. [△] app/report.py - NEEDS REWRITE
+    - Current version has syntax errors and incomplete implementation
+    - Needs clean rewrite using the correct signature:
+      generate_report(student_name, date_str, grading_result) -> PDF path
+
+6. [ ] app/main.py - NEEDS REWRITE
+    - Current version uses OLD approach (manual prompt, .txt reports)
+    - Needs to:
+      * Call grade_student() from grader.py for each student
+      * Parse student filenames and dates
+      * Call generate_report() from report.py for PDF generation
+      * Add file upload endpoint for web UI
+
+7. [ ] Vector index needs REBUILD
+    - data/index/ contains OLD index built without assignments
+    - Delete data/index/ and restart server to rebuild including assignments
+
+8. [ ] Web UI (HTML/CSS/JS) - NOT STARTED
+    - Simple upload page where student drops their file
+    - Backend endpoint /upload/ to receive file into data/students/
+    - Progress page while grading happens
+    - Result page with score + feedback + PDF download
+
+================================================================================
+4. IMPLEMENTATION PHASES
+================================================================================
+
+PHASE 1: FIX CORE PIPELINE (must be done first)
+----------------------------------------------------------------------------
+Goal: Get working command-line grading with PDF reports
+
+Step 1.1: Rewrite app/report.py (CLEAN, no syntax errors)
+  - Imports from reportlab (SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle)
+  - Function signature: generate_report(student_name, date_str, grading_result, output_dir)
+  - Output filename: {student_name}_{date_str}.pdf
+  - PDF sections:
+    a. Header (student name, date)
+    b. Overall score (percentage)
+    c. Assignment coverage table (question, covered ✓/✗, note)
+    d. Criteria scores table (criterion, score, max, justification)
+    e. Missing/partial questions
+    f. Contradictions with course material
+    g. Strengths (bulleted)
+    h. Areas for improvement (bulleted)
+    i. Overall feedback paragraph
+  - Handle "error" key in grading_result gracefully
+
+Step 1.2: Rewrite app/main.py
+  - Import from app.grader import grade_student, parse_student_filename, find_submission_date
+  - Import from app.report import generate_report
+  - Keep FastAPI startup_event() loading index
+  - Rewrite /run-batch-grading/ endpoint to:
+    a. Load assignment text from data/assignments/ (read TXT file into string)
+    b. For each student doc:
+       - Call grade_student(index, doc, assignment_text)
+       - Parse student name from filename
+       - Find submission date from document text
+       - Generate PDF via generate_report()
+    c. Return summary with per-student status
+  - Add /upload/ endpoint using UploadFile to save new student files
+
+Step 1.3: Rebuild Vector Index
+  - Delete data/index/ contents
+  - Restart server to force index rebuild with assignments included
+
+Step 1.4: Test
+  - Place student file in data/students/
+  - Run server; call /run-batch-grading/
+  - Verify PDF in data/reports/ named correctly
+  - Verify grading includes assignment coverage
+
+----------------------------------------------------------------------------
+PHASE 2: STRUCTURED GRADING RESULT & FALLBACK
+----------------------------------------------------------------------------
+Goal: Improve grading reliability
+
+Step 2.1: Add JSON parsing fallback in grader.py
+  - If LLM returns non-JSON, try to extract JSON with regex
+  - If still fails, return error dict with raw output for manual review
+
+Step 2.2: Add curriculum coverage mapping
+  - Map each assignment question to rubric criterion
+  - This lets the system check "all Q1-Q22 were covered" systematically
+
+----------------------------------------------------------------------------
+PHASE 3: WEB UI (simple upload page)
+----------------------------------------------------------------------------
+Goal: Allow students to upload assignment via browser
+
+Step 3.1: Create static/ folder with:
+  - index.html (upload form)
+  - style.css (minimal styling)
+
+Step 3.2: Add FastAPI endpoints:
+  - GET /                     -> serve HTML upload page
+  - POST /upload/             -> receive file, save to data/students/
+  - POST /grade/              -> grade a single just-uploaded file, return JSON
+  - GET /reports/{filename}   -> download generated PDF
+
+Step 3.3: Frontend JavaScript:
+  - File input with drag-and-drop
+  - Upload button -> POST to /upload/
+  - Immediately POST to /grade/
+  - Show loading spinner while grading (may take minutes on single GPU)
+  - On completion, show score + link to PDF download
+
+----------------------------------------------------------------------------
+PHASE 4: OPTIONAL ENHANCEMENTS
+----------------------------------------------------------------------------
+- Batch PDF export (all students to one directory)
+- Excel/CSV summary export of all scores
+- Student dashboard showing their past submissions
+- Admin dashboard with all students overview
+- Plagiarism detection (embedding similarity between student submissions)
+- Streaming progress updates during grading (SSE/WebSocket)
+
+================================================================================
+5. TECHNICAL NOTES & CONSTRAINTS
+================================================================================
+
+Hardware: GPU with 6GB VRAM (e.g., RTX 1660 Ti)
+- MAX_CHARS_PER_ANSWER = 5000 to prevent OOM
+- GC collect + time.sleep(2) between students to free VRAM
+- TOP_K = 3 for retrieval context
+
+LLM: Ollama
+- Model: qwen3.5:9b (fallback: qwen2.5:7b)
+- URL: http://localhost:11434
+- Embedding: nomic-embed-text
+- Temperature: 0.1 (deterministic for grading)
+
+Vector Store: llama_index local (ChromaDB/FAISS on disk)
+- Built ONCE for static course materials
+- Located at data/index/
+- To rebuild: delete data/index/, restart
+
+File Parsing: app/ingestion.py
+- PDF: pdfplumber
+- DOCX: python-docx
+- PPTX: python-pptx
+- Plain TXT: built-in
+
+================================================================================
+6. KEY GAPS & KNOWN ISSUES
+================================================================================
+
+1. app/report.py HAS SYNTAX ERRORS - must be rewritten entirely.
+   - The generate_pdf_report stub refers to undefined vars (grading_result,
+     assignment_name, date, pdf_path, styles from reportlab). Delete and rewrite.
+
+2. app/main.py STILL USES OLD LOGIC - need rewrite to use grade_student.
+
+3. data/index/ was built BEFORE assignments/ existed.
+   - Must rebuild (delete index folder, let server rebuild on startup).
+
+4. data/student/ArkarMin_FinalAssignment.docx exists as test file.
+   - Date in document: "14.08.2025" -> find_submission_date() will catch this.
+
+5. data/textbook/ is empty - only slides are indexed.
+
+6. The rubric.docx contains BOTH assignment questions AND rubric criteria.
+   - We extracted questions into data/assignments/assignment_1_computer_networking.txt
+   - Rubric remains in data/rubric/rubric.docx
+
+================================================================================
+7. TEST VERIFICATION CHECKLIST
+================================================================================
+
+After implementation, verify:
+[ ] pip install -r requirements.txt succeeds
+[ ] Ollama server is running (http://localhost:11434)
+[ ] "ollama list" shows qwen3.5:9b and nomic-embed-text
+[ ] Delete data/index/ ; start server ; index rebuilds with assignments
+[ ] POST /run-batch-grading/ with student file in data/students/
+[ ] Report file data/reports/ArkarMin_20250814.pdf created (name + date)
+[ ] PDF contains: score, coverage table, criteria, strengths, improvements
+
+================================================================================
+8. NEXT ACTIONS FOR CONTINUING MODEL
+================================================================================
+
+PRIORITY 1: Overwrite app/report.py entirely with working implementation
+  - Use the spec in Phase 1, Step 1.1 above
+  - Must pass Python syntax check (no pylance errors)
+
+PRIORITY 2: Overwrite app/main.py entirely
+  - Use grade_student() and generate_report()
+  - Keep startup_event() that calls initialize_index()
+  - Handle FileUpload for later web UI
+
+PRIORITY 3: Delete data/index/ contents
+
+PRIORITY 4: Add minimal web UI (static/index.html)
+
+PRIORITY 5: Test end-to-end with ArkarMin_FinalAssignment.docx
+
+================================================================================
+END OF PLAN DOCUMENT
+================================================================================

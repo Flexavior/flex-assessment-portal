@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Educator Assessment</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="wide">
+  <div id="app-nav"></div>
+  <main class="app-shell assess-shell">
+    <section class="assess-workspace">
+      <form id="upload-form">
+        <div class="assess-controls">
+          <div class="assess-models">
+            <div class="field-row field-row--compact">
+              <label for="provider-select">Provider</label>
+              <select id="provider-select" required></select>
+            </div>
+            <div class="field-row field-row--compact">
+              <label for="model-select">Model</label>
+              <select id="model-select" required></select>
+            </div>
+          </div>
+          <label class="dropzone assess-dropzone" id="dropzone" for="file-input">
+            <strong>Drop files or click to browse</strong>
+            <span>PDF, DOCX, or TXT — multiple allowed</span>
+            <input id="file-input" type="file" accept=".pdf,.docx,.doc,.txt" multiple required>
+          </label>
+        </div>
+
+        <div id="file-map" class="file-map hidden"></div>
+        <p id="file-name" class="file-name"></p>
+
+        <div class="form-actions assess-actions">
+          <button type="submit" id="submit-btn">Run the Job</button>
+        </div>
+      </form>
+
+      <div id="status" class="status hidden" aria-live="polite">
+        <div class="spinner"></div>
+        <p id="status-text">Working…</p>
+      </div>
+    </section>
+
+    <section id="queue-panel" class="queue-panel hidden">
+      <h2 class="section-title">Current batch</h2>
+      <p id="queue-summary"></p>
+      <ul id="job-list" class="job-list"></ul>
+    </section>
+  </main>
+  <script src="/static/nav.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Recent Job Worker</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="wide">
+  <div id="app-nav"></div>
+  <main class="portal-shell portal-shell--wide">
+    <section class="panel table-card">
+      <div class="table-card__head">
+        <div class="table-card__title">
+          <h1>Recent Job Worker</h1>
+          <p id="summary" class="hint">Loading...</p>
+          <p class="hint">Live in-memory queue only. Search all Done, Failed, and timeout outcomes in Settings → System log.</p>
+        </div>
+        <div class="field-row field-row--compact jobs-status-filter">
+          <label for="status">Status</label>
+          <select id="status">
+            <option value="">All</option>
+            <option value="active">Active</option>
+            <option value="queued">Queued</option>
+            <option value="running">Running</option>
+            <option value="done">Done</option>
+            <option value="failed">Failed</option>
+          </select>
+        </div>
+      </div>
+      <div class="table-wrap">
+      <table class="table-dense">
+        <thead><tr><th>File</th><th>Student</th><th>Status</th><th>Score</th><th>Report</th><th>Error</th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+      </div>
+      <div class="pager jobs-pager">
+        <button type="button" class="btn-secondary" id="prev">Prev</button>
+        <span id="page">Page 1</span>
+        <button type="button" class="btn-secondary" id="next">Next</button>
+      </div>
+    </section>
+  </main>
+  <script src="/static/nav.js"></script>
+  <script>
+    let offset = 0;
+    const limit = 20;
+    let total = 0;
+    let timer = null;
+    let loading = false;
+
+    function esc(value) {
+      return String(value || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+    }
+
+    function updatePager() {
+      const page = Math.floor(offset / limit) + 1;
+      const pages = Math.max(1, Math.ceil(total / limit) || 1);
+      const from = total ? offset + 1 : 0;
+      const to = Math.min(offset + limit, total);
+      document.getElementById("page").textContent = total
+        ? `${from}-${to} of ${total} · Page ${page}/${pages}`
+        : "No jobs";
+      document.getElementById("prev").disabled = offset <= 0;
+      document.getElementById("next").disabled = offset + limit >= total;
+    }
+
+    async function load() {
+      if (document.hidden || loading) return;
+      loading = true;
+      try {
+        const status = document.getElementById("status").value;
+        const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+        if (status) params.set("status", status);
+        const data = await api("/api/jobs?" + params.toString());
+        const c = data.counts || {};
+        total = Number(data.total) || 0;
+        if (offset > 0 && offset >= total) {
+          offset = Math.max(0, (Math.ceil(total / limit) - 1) * limit);
+        }
+        document.getElementById("summary").textContent =
+          `Active ${c.active || 0} · done ${c.done || 0} · failed ${c.failed || 0}`;
+        document.getElementById("rows").innerHTML = (data.jobs || []).map((j) =>
+          `<tr>
+            <td>${esc(j.filename)}</td>
+            <td>${esc(j.student_name || "")}</td>
+            <td class="job-${esc(j.status)}">${esc(j.status)}</td>
+            <td>${j.total_score_percent ?? ""}</td>
+            <td>${j.report ? `<a href="/reports/${encodeURIComponent(j.report)}" target="_blank" rel="noopener noreferrer">PDF</a>` : ""}</td>
+            <td class="error">${esc(j.error || "")}</td>
+          </tr>`
+        ).join("") || `<tr><td colspan="6">No jobs.</td></tr>`;
+        updatePager();
+      } finally {
+        loading = false;
+      }
+    }
+
+    requireAuth(["supervisor", "educator"]).then(() => {
+      load().catch((err) => {
+        document.getElementById("summary").textContent = err.message;
+      });
+      timer = setInterval(() => { load().catch(() => {}); }, 4000);
+    });
+
+    window.addEventListener("beforeunload", () => {
+      if (timer) clearInterval(timer);
+    });
+
+    document.getElementById("status").addEventListener("change", () => {
+      offset = 0;
+      load().catch(() => {});
+    });
+    document.getElementById("next").addEventListener("click", () => {
+      if (offset + limit >= total) return;
+      offset += limit;
+      load().catch(() => {});
+    });
+    document.getElementById("prev").addEventListener("click", () => {
+      if (offset <= 0) return;
+      offset = Math.max(0, offset - limit);
+      load().catch(() => {});
+    });
+  </script>
+</body>
+</html>

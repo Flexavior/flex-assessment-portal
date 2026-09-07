@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Supervisor Settings</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="wide">
+  <div id="app-nav"></div>
+  <main class="portal-shell portal-shell--wide">
+    <section class="panel settings-section hidden" id="deadlines" data-section="deadlines">
+      <h2 class="section-title">Edit Schedule</h2>
+      <div class="schedule-row">
+        <div class="field-row schedule-row__pick">
+          <label for="assignment_pick">Assignment</label>
+          <select id="assignment_pick">
+            <option value="">Select…</option>
+          </select>
+        </div>
+        <div class="field-row schedule-row__deadline">
+          <label for="assignment_deadline">Deadline (+06:30)</label>
+          <input id="assignment_deadline" type="datetime-local">
+        </div>
+        <div class="schedule-row__actions">
+          <button type="button" id="save-assignment-deadline">Save</button>
+          <button type="button" class="btn-secondary" id="clear-assignment-deadline">Clear</button>
+        </div>
+      </div>
+      <p id="assignment-deadline-msg" class="error hidden"></p>
+      <div class="table-wrap">
+        <table class="table-dense">
+          <thead>
+            <tr>
+              <th>Assignment</th>
+              <th>Batch</th>
+              <th>Deadline</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="assignment-rows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel settings-section hidden" id="slides" data-section="slides">
+      <h2 class="section-title">Course slides</h2>
+      <label class="dropzone dropzone-academic--compact" id="slide-drop" for="slide-file">
+        <strong>Drop slides here or click to browse</strong>
+        <span class="hint">PDF, PPTX, DOCX, TXT</span>
+        <input type="file" id="slide-file" accept=".pdf,.pptx,.ppt,.docx,.txt,.doc">
+      </label>
+      <p id="slide-name" class="file-name"></p>
+      <div class="form-actions" style="margin-bottom:16px">
+        <button type="button" id="up-slide">Upload</button>
+      </div>
+      <div class="table-wrap">
+        <table class="table-dense"><thead><tr><th>File</th><th class="col-actions">Action</th></tr></thead><tbody id="slides-rows"></tbody></table>
+      </div>
+    </section>
+
+    <section class="panel settings-section hidden" id="textbook" data-section="textbook">
+      <h2 class="section-title">Textbook</h2>
+      <label class="dropzone dropzone-academic--compact" id="book-drop" for="book-file">
+        <strong>Drop textbook here or click to browse</strong>
+        <span class="hint">PDF, DOCX, TXT</span>
+        <input type="file" id="book-file" accept=".pdf,.docx,.txt,.doc">
+      </label>
+      <p id="book-name" class="file-name"></p>
+      <div class="form-actions" style="margin-bottom:16px">
+        <button type="button" id="up-book">Upload</button>
+      </div>
+      <div class="table-wrap">
+        <table class="table-dense"><thead><tr><th>File</th><th class="col-actions">Action</th></tr></thead><tbody id="textbook-rows"></tbody></table>
+      </div>
+    </section>
+
+    <section class="panel settings-section hidden" id="rubric" data-section="rubric">
+      <h2 class="section-title">Rubric</h2>
+      <label class="dropzone dropzone-academic--compact" id="rubric-drop" for="rubric-file">
+        <strong>Drop rubric here or click to browse</strong>
+        <span class="hint">PDF, DOCX, TXT</span>
+        <input type="file" id="rubric-file" accept=".pdf,.docx,.txt,.doc">
+      </label>
+      <p id="rubric-name" class="file-name"></p>
+      <div class="form-actions" style="margin-bottom:16px">
+        <button type="button" id="up-rubric">Upload</button>
+      </div>
+      <div class="table-wrap">
+        <table class="table-dense"><thead><tr><th>File</th><th class="col-actions">Action</th></tr></thead><tbody id="rubric-rows"></tbody></table>
+      </div>
+    </section>
+
+    <section class="panel table-card settings-section hidden" id="log" data-section="log">
+      <div class="table-card__head">
+        <div class="table-card__title">
+          <h2 class="section-title">System Log</h2>
+        </div>
+        <div class="accounts-toolbar">
+          <input id="log-search" class="files-search" type="search" placeholder="File, Done, Failed, provider…" aria-label="Search system log">
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="table-dense">
+          <thead>
+            <tr>
+              <th>When</th>
+              <th>Kind</th>
+              <th>Status</th>
+              <th>File</th>
+              <th>Message</th>
+              <th>By</th>
+            </tr>
+          </thead>
+          <tbody id="log-rows"></tbody>
+        </table>
+      </div>
+      <div class="files-pager" id="log-pager"></div>
+    </section>
+
+    <p id="msg" class="ok hidden"></p>
+    <p id="err" class="error hidden"></p>
+  </main>
+
+  <div id="archive-modal" class="modal hidden" aria-hidden="true">
+    <div class="modal__dialog" role="dialog" aria-labelledby="archive-title">
+      <div class="modal__head">
+        <h2 id="archive-title">Archive file</h2>
+        <button type="button" class="modal__close" data-close-modal aria-label="Close">&times;</button>
+      </div>
+      <div class="modal__body">
+        <p id="archive-file" class="file-name"></p>
+        <p class="lede">The file moves to data/archive/ (not hard-deleted). Course index rebuilds for slides/textbook.</p>
+        <p id="archive-err" class="error hidden"></p>
+      </div>
+      <div class="modal__foot">
+        <button type="button" class="btn-secondary" data-close-modal>Cancel</button>
+        <button type="button" id="archive-confirm" class="btn-primary">Archive</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/nav.js"></script>
+  <script>
+    let assignments = [];
+    let logTimer = null;
+    let logPage = { offset: 0, limit: 5, total: 0 };
+    let pendingArchive = null;
+
+    function esc(v) {
+      return String(v || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+    }
+
+    function show(text, isErr) {
+      document.getElementById("err").classList.toggle("hidden", !isErr);
+      document.getElementById("msg").classList.toggle("hidden", isErr);
+      if (isErr) document.getElementById("err").textContent = text;
+      else document.getElementById("msg").textContent = text;
+    }
+
+    function showSection(id) {
+      const allowed = ["deadlines", "slides", "textbook", "rubric", "log"];
+      const requested = id === "audit" ? "log" : id;
+      const section = allowed.includes(requested) ? requested : "deadlines";
+      document.querySelectorAll(".settings-section").forEach((el) => {
+        el.classList.toggle("hidden", el.dataset.section !== section);
+      });
+      if (location.hash.replace("#", "") !== section) {
+        history.replaceState(null, "", "#" + section);
+      }
+      document.querySelectorAll(".nav-dropdown__item").forEach((a) => {
+        a.classList.toggle("active", a.getAttribute("href") === "/settings#" + section);
+      });
+      if (["slides", "textbook", "rubric"].includes(section)) {
+        loadLists().catch((ex) => show(ex.message, true));
+      }
+      if (section === "log") {
+        loadSystemLog().catch((ex) => show(ex.message, true));
+      }
+    }
+
+    function bindDropzone(zoneId, inputId, nameId) {
+      const zone = document.getElementById(zoneId);
+      const input = document.getElementById(inputId);
+      const nameEl = document.getElementById(nameId);
+      const sync = () => {
+        nameEl.textContent = input.files.length ? input.files[0].name : "";
+        zone.classList.toggle("drag", false);
+      };
+      input.addEventListener("change", sync);
+      ["dragenter", "dragover"].forEach((ev) => {
+        zone.addEventListener(ev, (e) => {
+          e.preventDefault();
+          zone.classList.add("drag");
+        });
+      });
+      ["dragleave", "drop"].forEach((ev) => {
+        zone.addEventListener(ev, (e) => {
+          e.preventDefault();
+          zone.classList.remove("drag");
+        });
+      });
+      zone.addEventListener("drop", (e) => {
+        const files = e.dataTransfer && e.dataTransfer.files;
+        if (!files || !files.length) return;
+        const dt = new DataTransfer();
+        dt.items.add(files[0]);
+        input.files = dt.files;
+        sync();
+      });
+    }
+
+    function fillAssignmentPicker() {
+      const sel = document.getElementById("assignment_pick");
+      sel.innerHTML = `<option value="">Select…</option>` + assignments.map((a) =>
+        `<option value="${a.id}">${esc(a.label)}</option>`
+      ).join("");
+    }
+
+    function renderAssignmentTable() {
+      document.getElementById("assignment-rows").innerHTML = assignments.map((a) =>
+        `<tr>
+          <td>${esc(a.title)}</td>
+          <td>${esc(a.batch_name)}</td>
+          <td>${esc(a.deadline_local || "Open")}</td>
+          <td><span class="chip ${a.is_active ? "chip--ok" : ""}">${a.is_active ? "Active" : "Inactive"}</span></td>
+        </tr>`
+      ).join("") || `<tr><td colspan="4">No batches yet.</td></tr>`;
+    }
+
+    function syncDeadlineField() {
+      const id = document.getElementById("assignment_pick").value;
+      const row = assignments.find((a) => String(a.id) === id);
+      document.getElementById("assignment_deadline").value = row?.deadline_input || "";
+      const msg = document.getElementById("assignment-deadline-msg");
+      msg.classList.add("hidden");
+      msg.textContent = "";
+    }
+
+    async function loadAssignments() {
+      const data = await api("/api/assignments");
+      assignments = data.assignments || [];
+      fillAssignmentPicker();
+      renderAssignmentTable();
+      syncDeadlineField();
+    }
+
+    async function loadLists() {
+      const kinds = [
+        ["slides", "slides-rows"],
+        ["textbook", "textbook-rows"],
+        ["rubric", "rubric-rows"],
+      ];
+      for (const [kind, rowId] of kinds) {
+        const host = document.getElementById(rowId);
+        try {
+          const data = await api("/api/files/" + kind);
+          const row = (f) =>
+            `<tr>
+              <td class="cell-strong">${esc(f.name)}</td>
+              <td class="col-actions">
+                <button type="button" class="btn-ghost" data-kind="${kind}" data-name="${esc(f.name)}">Archive</button>
+              </td>
+            </tr>`;
+          host.innerHTML = (data.files || []).map(row).join("")
+            || `<tr><td colspan="2">No files yet.</td></tr>`;
+        } catch (ex) {
+          host.innerHTML = `<tr><td colspan="2" class="error">${esc(ex.message)}</td></tr>`;
+        }
+      }
+    }
+
+    async function upload(kind, inputId) {
+      const input = document.getElementById(inputId);
+      if (!input.files.length) throw new Error("Choose a file first.");
+      const body = new FormData();
+      body.append("file", input.files[0]);
+      const res = await fetch("/api/files/" + kind, { method: "POST", body, credentials: "same-origin" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Upload failed");
+      input.value = "";
+      const nameEl = document.getElementById(inputId.replace("-file", "-name"));
+      if (nameEl) nameEl.textContent = "";
+      return data;
+    }
+
+    async function loadSystemLog() {
+      const q = document.getElementById("log-search").value.trim();
+      const params = new URLSearchParams({
+        limit: String(logPage.limit),
+        offset: String(logPage.offset),
+      });
+      if (q) params.set("search", q);
+      const data = await api("/api/system-log?" + params.toString());
+      logPage.total = data.total || 0;
+      logPage.limit = data.limit || logPage.limit;
+      logPage.offset = data.offset || 0;
+      document.getElementById("log-rows").innerHTML = (data.entries || []).map((e) =>
+        `<tr>
+          <td>${esc(e.created_at || e.deleted_at)}</td>
+          <td>${esc(e.kind)}</td>
+          <td>${esc(e.status || "")}</td>
+          <td class="cell-truncate" title="${esc(e.filename)}">${esc(e.filename)}</td>
+          <td>${esc(e.message || e.reason || "")}</td>
+          <td>${esc(e.actor || e.deleted_by_name || e.deleted_by_email || "")}</td>
+        </tr>`
+      ).join("") || `<tr><td colspan="6">No entries.</td></tr>`;
+      const total = logPage.total || 0;
+      const page = Math.floor(logPage.offset / logPage.limit) + 1;
+      const pages = Math.max(1, Math.ceil(total / logPage.limit));
+      const from = total ? logPage.offset + 1 : 0;
+      const to = Math.min(logPage.offset + logPage.limit, total);
+      document.getElementById("log-pager").innerHTML = `<span class="files-pager__meta">${from}-${to} of ${total}</span>
+        <div class="files-pager__btns">
+          <button type="button" class="btn-secondary btn-compact" data-log-dir="prev" ${logPage.offset <= 0 ? "disabled" : ""}>Prev</button>
+          <span class="files-pager__page">${page}/${pages}</span>
+          <button type="button" class="btn-secondary btn-compact" data-log-dir="next" ${logPage.offset + logPage.limit >= total ? "disabled" : ""}>Next</button>
+        </div>`;
+    }
+
+    requireAuth(["supervisor"]).then(async () => {
+      bindModal("archive-modal");
+      showSection(location.hash.replace("#", "") || "deadlines");
+      window.addEventListener("hashchange", () => showSection(location.hash.replace("#", "")));
+
+      bindDropzone("slide-drop", "slide-file", "slide-name");
+      bindDropzone("book-drop", "book-file", "book-name");
+      bindDropzone("rubric-drop", "rubric-file", "rubric-name");
+
+      await loadAssignments();
+      await loadLists();
+
+      document.getElementById("assignment_pick").addEventListener("change", syncDeadlineField);
+      document.getElementById("log-search").addEventListener("input", () => {
+        if (logTimer) clearTimeout(logTimer);
+        logTimer = setTimeout(() => {
+          logPage.offset = 0;
+          loadSystemLog().catch((ex) => show(ex.message, true));
+        }, 250);
+      });
+      document.getElementById("log-pager").addEventListener("click", (e) => {
+        const btn = e.target.closest("[data-log-dir]");
+        if (!btn || btn.disabled) return;
+        logPage.offset = btn.dataset.logDir === "next"
+          ? logPage.offset + logPage.limit
+          : Math.max(0, logPage.offset - logPage.limit);
+        loadSystemLog().catch((ex) => show(ex.message, true));
+      });
+
+      document.getElementById("save-assignment-deadline").onclick = async () => {
+        const id = document.getElementById("assignment_pick").value;
+        if (!id) { show("Select an assignment.", true); return; }
+        try {
+          const out = await api("/api/assignments/" + id, {
+            method: "PATCH",
+            body: JSON.stringify({ local_deadline: document.getElementById("assignment_deadline").value || null }),
+          });
+          show("Saved " + out.assignment.label);
+          await loadAssignments();
+          document.getElementById("assignment_pick").value = id;
+          syncDeadlineField();
+        } catch (ex) { show(ex.message, true); }
+      };
+
+      document.getElementById("clear-assignment-deadline").onclick = async () => {
+        const id = document.getElementById("assignment_pick").value;
+        if (!id) { show("Select an assignment.", true); return; }
+        try {
+          await api("/api/assignments/" + id, {
+            method: "PATCH",
+            body: JSON.stringify({ local_deadline: null }),
+          });
+          document.getElementById("assignment_deadline").value = "";
+          show("Deadline cleared.");
+          await loadAssignments();
+          document.getElementById("assignment_pick").value = id;
+          syncDeadlineField();
+        } catch (ex) { show(ex.message, true); }
+      };
+
+      document.getElementById("up-slide").onclick = async () => {
+        try {
+          const d = await upload("slides", "slide-file");
+          show("Uploaded " + d.filename + (d.rebuild && !d.rebuild.skipped ? " (index " + d.rebuild.count + ")" : ""));
+          await loadLists();
+        } catch (ex) { show(ex.message, true); }
+      };
+      document.getElementById("up-book").onclick = async () => {
+        try {
+          const d = await upload("textbook", "book-file");
+          show("Uploaded " + d.filename + (d.rebuild && !d.rebuild.skipped ? " (index " + d.rebuild.count + ")" : ""));
+          await loadLists();
+        } catch (ex) { show(ex.message, true); }
+      };
+      document.getElementById("up-rubric").onclick = async () => {
+        try {
+          const d = await upload("rubric", "rubric-file");
+          show("Uploaded " + d.filename);
+          await loadLists();
+        } catch (ex) { show(ex.message, true); }
+      };
+
+      document.querySelector("main").addEventListener("click", (e) => {
+        const btn = e.target.closest("button[data-kind]");
+        if (!btn) return;
+        pendingArchive = { kind: btn.dataset.kind, name: btn.dataset.name };
+        document.getElementById("archive-file").textContent = btn.dataset.name;
+        document.getElementById("archive-err").classList.add("hidden");
+        openModal("archive-modal");
+      });
+
+      document.getElementById("archive-confirm").onclick = async () => {
+        if (!pendingArchive) return;
+        const errEl = document.getElementById("archive-err");
+        errEl.classList.add("hidden");
+        try {
+          await api("/api/files/" + pendingArchive.kind + "/archive", {
+            method: "POST",
+            body: JSON.stringify({ filename: pendingArchive.name, confirm: true }),
+          });
+          show("Archived " + pendingArchive.name);
+          pendingArchive = null;
+          closeModal("archive-modal");
+          await loadLists();
+        } catch (ex) {
+          errEl.textContent = ex.message;
+          errEl.classList.remove("hidden");
+        }
+      };
+    });
+  </script>
+</body>
+</html>

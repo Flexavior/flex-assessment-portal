@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Accounts</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="wide">
+  <div id="app-nav"></div>
+  <main class="portal-shell portal-shell--wide">
+    <section class="panel table-card">
+      <div class="table-card__head">
+        <div class="table-card__title">
+          <h1>Accounts</h1>
+        </div>
+        <div class="accounts-toolbar">
+          <select id="account-batch" class="files-batch-select" aria-label="Assignment batch">
+            <option value="all">All batches</option>
+            <option value="unassigned">Unassigned</option>
+          </select>
+          <input id="account-search" class="files-search" type="search" placeholder="Name, email, role, ID…" aria-label="Search accounts">
+          <button type="button" class="btn-new" id="open-create">+ New account</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="table-dense">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Role</th>
+              <th>Batch</th>
+              <th class="col-toggle">Active</th>
+              <th class="col-toggle">Self-grade</th>
+              <th class="col-actions">Edit</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+      <p id="uerr" class="error hidden"></p>
+      <p id="uok" class="ok hidden"></p>
+    </section>
+  </main>
+
+  <div id="create-modal" class="modal hidden" aria-hidden="true">
+    <div class="modal__dialog" role="dialog" aria-labelledby="create-title">
+      <div class="modal__head">
+        <h2 id="create-title">New account</h2>
+        <button type="button" class="modal__close" data-close-modal aria-label="Close">&times;</button>
+      </div>
+      <form id="create-form">
+        <div class="modal__body">
+          <div class="field-row"><label for="create_full_name">Full name</label><input id="create_full_name" type="text" required></div>
+          <div class="field-row"><label for="create_email">Email</label><input id="create_email" type="email" required></div>
+          <div class="field-row"><label for="create_password">Password</label><input id="create_password" type="password" minlength="8" required></div>
+          <div class="field-row">
+            <label for="create_role">Role</label>
+            <select id="create_role"><option value="student">Student</option><option value="educator">Educator</option></select>
+          </div>
+          <div class="field-row" id="create-batch-row">
+            <label for="create_assignment_id">Assignment batch</label>
+            <select id="create_assignment_id"><option value="">Unassigned</option></select>
+          </div>
+          <label class="check-row" id="create-self-row"><input type="checkbox" id="create_can_self_grade"> Grant special permission (self-grade)</label>
+          <p id="cerr" class="error hidden"></p>
+        </div>
+        <div class="modal__foot">
+          <button type="button" class="btn-secondary" data-close-modal>Cancel</button>
+          <button type="submit">Create</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="edit-modal" class="modal hidden" aria-hidden="true">
+    <div class="modal__dialog" role="dialog" aria-labelledby="edit-title">
+      <div class="modal__head">
+        <h2 id="edit-title">Edit account</h2>
+        <button type="button" class="modal__close" data-close-modal aria-label="Close">&times;</button>
+      </div>
+      <form id="edit-form">
+        <div class="modal__body">
+          <input type="hidden" id="edit_id">
+          <input type="hidden" id="edit_role">
+          <div class="field-row"><label for="edit_full_name">Full name</label><input id="edit_full_name" type="text" required></div>
+          <div class="field-row"><label for="edit_email">Email</label><input id="edit_email" type="email" required></div>
+          <div class="field-row"><label for="edit_password">New password</label><input id="edit_password" type="password" minlength="8" placeholder="Leave blank to keep current"></div>
+          <div class="field-row hidden" id="edit-batch-row">
+            <label for="edit_assignment_id">Assignment batch</label>
+            <select id="edit_assignment_id"><option value="">Unassigned</option></select>
+          </div>
+          <p id="eerr" class="error hidden"></p>
+        </div>
+        <div class="modal__foot">
+          <button type="button" class="btn-secondary" data-close-modal>Cancel</button>
+          <button type="submit">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="/static/nav.js"></script>
+  <script>
+    let users = [];
+    let assignmentOptions = "";
+
+    function esc(value) {
+      return String(value || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+    }
+
+    function showUserMessage(text, isError = false) {
+      const err = document.getElementById("uerr");
+      const ok = document.getElementById("uok");
+      err.classList.toggle("hidden", !isError);
+      ok.classList.toggle("hidden", isError);
+      err.textContent = isError ? text : "";
+      ok.textContent = isError ? "" : text;
+    }
+
+    function fillAssignmentSelects(assignments) {
+      assignmentOptions = `<option value="">Unassigned</option>` + (assignments || []).map((a) =>
+        `<option value="${a.id}">${esc(a.label)}</option>`
+      ).join("");
+      document.getElementById("create_assignment_id").innerHTML = assignmentOptions;
+      document.getElementById("edit_assignment_id").innerHTML = assignmentOptions;
+      const batch = document.getElementById("account-batch");
+      const keep = batch.value || "all";
+      batch.innerHTML = `<option value="all">All batches</option><option value="unassigned">Unassigned</option>`
+        + (assignments || []).map((a) => `<option value="${a.id}">${esc(a.label)}</option>`).join("");
+      if ([...batch.options].some((o) => o.value === keep)) batch.value = keep;
+    }
+
+    function toggleRow(u) {
+      const activeToggle = u.role !== "supervisor"
+        ? `<label class="toggle-switch" title="${u.is_active ? "Deactivate" : "Activate"}">
+            <input type="checkbox" data-toggle="active" data-id="${u.id}" ${u.is_active ? "checked" : ""}>
+            <span class="toggle-slider"></span>
+          </label>`
+        : `<span class="toggle-na">—</span>`;
+      const selfToggle = u.role === "student"
+        ? `<label class="toggle-switch" title="${u.can_self_grade ? "Revoke special" : "Grant special"}">
+            <input type="checkbox" data-toggle="perm" data-id="${u.id}" ${u.can_self_grade ? "checked" : ""}>
+            <span class="toggle-slider"></span>
+          </label>`
+        : `<span class="toggle-na">—</span>`;
+      return `<tr data-id="${u.id}">
+        <td class="cell-muted">${u.id}</td>
+        <td class="cell-strong">${esc(u.full_name)}</td>
+        <td>${esc(u.email)}</td>
+        <td><span class="chip">${esc(u.role)}</span></td>
+        <td>${esc(u.assignment_label || "Unassigned")}</td>
+        <td class="col-toggle">${activeToggle}</td>
+        <td class="col-toggle">${selfToggle}</td>
+        <td class="col-actions"><button type="button" class="btn-edit" data-act="edit" data-id="${u.id}">Edit</button></td>
+      </tr>`;
+    }
+
+    async function refresh() {
+      const params = new URLSearchParams();
+      const q = document.getElementById("account-search").value.trim();
+      const batch = document.getElementById("account-batch").value || "all";
+      if (q) params.set("search", q);
+      if (batch && batch !== "all") params.set("batch", batch);
+      const data = await api("/api/users?" + params.toString());
+      users = data.users || [];
+      fillAssignmentSelects(data.assignments || []);
+      document.getElementById("rows").innerHTML = users.map(toggleRow).join("")
+        || `<tr><td colspan="8">No users found.</td></tr>`;
+    }
+
+    function syncCreateRoleFields() {
+      const student = document.getElementById("create_role").value === "student";
+      document.getElementById("create_can_self_grade").disabled = !student;
+      document.getElementById("create_assignment_id").disabled = !student;
+      document.getElementById("create-self-row").classList.toggle("hidden", !student);
+      document.getElementById("create-batch-row").classList.toggle("hidden", !student);
+    }
+
+    function openEditModal(user) {
+      document.getElementById("edit_id").value = user.id;
+      document.getElementById("edit_role").value = user.role;
+      document.getElementById("edit_full_name").value = user.full_name || "";
+      document.getElementById("edit_email").value = user.email || "";
+      document.getElementById("edit_password").value = "";
+      document.getElementById("edit_assignment_id").value = user.assignment_id || "";
+      document.getElementById("edit-batch-row").classList.toggle("hidden", user.role !== "student");
+      document.getElementById("eerr").classList.add("hidden");
+      openModal("edit-modal");
+    }
+
+    async function patchUser(id, body) {
+      await api("/api/users/" + id, { method: "PATCH", body: JSON.stringify(body) });
+      showUserMessage("Account updated.");
+      await refresh();
+    }
+
+    requireAuth(["supervisor"]).then(async () => {
+      bindModal("create-modal");
+      bindModal("edit-modal");
+      await refresh();
+
+      let searchTimer = null;
+      document.getElementById("account-search").addEventListener("input", () => {
+        if (searchTimer) clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => {
+          refresh().catch((ex) => showUserMessage(ex.message, true));
+        }, 250);
+      });
+      document.getElementById("account-batch").addEventListener("change", () => {
+        refresh().catch((ex) => showUserMessage(ex.message, true));
+      });
+
+      document.getElementById("open-create").addEventListener("click", () => {
+        document.getElementById("create-form").reset();
+        document.getElementById("cerr").classList.add("hidden");
+        syncCreateRoleFields();
+        openModal("create-modal");
+      });
+
+      document.getElementById("create_role").addEventListener("change", syncCreateRoleFields);
+      syncCreateRoleFields();
+
+      document.getElementById("create-form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const err = document.getElementById("cerr");
+        err.classList.add("hidden");
+        try {
+          await api("/api/users", {
+            method: "POST",
+            body: JSON.stringify({
+              full_name: document.getElementById("create_full_name").value,
+              email: document.getElementById("create_email").value,
+              password: document.getElementById("create_password").value,
+              role: document.getElementById("create_role").value,
+              can_self_grade: document.getElementById("create_can_self_grade").checked,
+              assignment_id: document.getElementById("create_assignment_id").value || null,
+            }),
+          });
+          closeModal("create-modal");
+          showUserMessage("Account created.");
+          await refresh();
+        } catch (ex) {
+          err.textContent = ex.message;
+          err.classList.remove("hidden");
+        }
+      });
+
+      document.getElementById("edit-form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const err = document.getElementById("eerr");
+        err.classList.add("hidden");
+        const id = document.getElementById("edit_id").value;
+        const role = document.getElementById("edit_role").value;
+        const password = document.getElementById("edit_password").value;
+        const body = {
+          full_name: document.getElementById("edit_full_name").value,
+          email: document.getElementById("edit_email").value,
+          assignment_id: role === "student"
+            ? (document.getElementById("edit_assignment_id").value ? Number(document.getElementById("edit_assignment_id").value) : null)
+            : undefined,
+        };
+        if (password) body.password = password;
+        try {
+          await patchUser(id, body);
+          closeModal("edit-modal");
+        } catch (ex) {
+          err.textContent = ex.message;
+          err.classList.remove("hidden");
+        }
+      });
+
+      document.getElementById("rows").addEventListener("click", (e) => {
+        const btn = e.target.closest("[data-act='edit']");
+        if (!btn) return;
+        const user = users.find((u) => String(u.id) === btn.dataset.id);
+        if (user) openEditModal(user);
+      });
+
+      document.getElementById("rows").addEventListener("change", async (e) => {
+        const input = e.target.closest("[data-toggle]");
+        if (!input) return;
+        const id = input.dataset.id;
+        const prev = users.find((u) => String(u.id) === id);
+        if (!prev) return;
+        const body = input.dataset.toggle === "active"
+          ? { is_active: input.checked }
+          : { can_self_grade: input.checked };
+        input.disabled = true;
+        try {
+          await patchUser(id, body);
+        } catch (ex) {
+          input.checked = !input.checked;
+          showUserMessage(ex.message, true);
+        } finally {
+          input.disabled = false;
+        }
+      });
+    });
+  </script>
+</body>
+</html>

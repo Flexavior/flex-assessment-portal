@@ -1,0 +1,79 @@
+# =============================================================================
+# Clean-start repo: clone → copy .env.example → run → /setup creates supervisor.
+# No student accounts, student files, reports, or vector index ship in git.
+# Educator uploads course materials and creates accounts after first login.
+# =============================================================================
+
+# --- Secrets (never commit) ---
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+credentials.json
+secrets/
+
+# --- Python / virtualenvs ---
+.cursor/
+.venv/
+venv/
+env/
+grading-system-dev/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+Desktop.ini
+.idea/
+.vscode/
+*.swp
+*~
+
+# --- Logs / temp ---
+*.log
+tmp/
+temp/
+_tmp_*
+
+# --- Accounts DB (empty until /setup) ---
+data/app.db
+data/app.db-*
+
+# --- Vector index (rebuild after uploading slides/textbook) ---
+data/index/**
+!data/index/.gitkeep
+
+# --- Student PII & generated reports (always empty in git) ---
+data/students/**
+!data/students/.gitkeep
+data/reports/**
+!data/reports/.gitkeep
+data/archive/**
+!data/archive/.gitkeep
+
+# --- Course uploads (educator adds after install) ---
+data/slides/**
+!data/slides/.gitkeep
+data/textbook/**
+!data/textbook/.gitkeep
+data/rubric/**
+!data/rubric/.gitkeep
+
+# Optional sample assignment text may be committed; ignore binary uploads
+data/assignments/**/*.pdf
+data/assignments/**/*.docx
+data/assignments/**/*.doc
+data/assignments/**/*.pptx
+data/assignments/**/*.ppt
