@@ -271,3 +271,8 @@ SQLite metadata lives in `data/app.db`. Passwords are bcrypt-hashed. Course file
 ##Start
 .\.venv\Scripts\python run.py
 http://127.0.0.1:8000
+
+## License
+This project is licensed under the MIT License. 
+
+"# Flexavior-Assessment-Portal"
